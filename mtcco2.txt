@@ -1,0 +1,2251 @@
+create or replace PACKAGE BODY LS_CCO_MT
+AS
+   /******************************************************************************
+      NAME:       LITESON_CCO_MT
+      PURPOSE:
+
+      REVISIONS:
+      Ver        Date        Author           Description
+      ---------  ----------  ---------------  ------------------------------------
+        1.0        03.08.2019      gokhan.dogan       1. Created this package.
+
+   ******************************************************************************/
+
+   /********* Global parameters definations ************/
+   TYPE T_GENERAL_VARIABLES IS RECORD 
+   (
+     EXECUTIONGUID     RAW(16),
+     EXECUTIONSTARTTIMESTAMP  TIMESTAMP,
+     EXECUTIONPLANID NUMBER,
+     OPTIMIZER_NAME VARCHAR2(200),
+     IS_FORCE_ROLLBACK NUMBER,
+     IS_PERIOD_ROLLBACK NUMBER,
+     EXECUTIONPROFILE XMLTYPE,
+     EXECUTIONPARAMS XMLTYPE,
+     OBSERVATIONPERIODS XMLTYPE,
+     OPERATION_TYPE NUMBER,
+     SESSION_ID NUMBER,
+     TAB_OBJECT_ID1 NUMBER
+   );
+     v_TA90ExtensionForGapDetection CONSTANT NUMBER := 1.3; /* PISON-8509 */
+     v_MinExpectedBeamwidth         CONSTANT NUMBER := 65 ;/* PISON-8490 */
+     v_MaximumInsideArcDistance     CONSTANT NUMBER   := 20;
+     V_ROW_LS_CCO_SETTINGS T_GENERAL_VARIABLES;  
+     v_test number;
+
+  PROCEDURE RAISE_EXCEPTION(PMESSAGE VARCHAR2,PLINE_NUMBER NUMBER)
+   IS 
+   BEGIN
+    Raise_Application_Error (-20001,PMESSAGE || ' Line Number:' || PLINE_NUMBER );
+   END; 
+
+ PROCEDURE FILL_SETTINGS_TABLE
+   IS
+   BEGIN   
+
+       /****************** FILLING 4G SETTINGS **************************************************/
+   INSERT INTO LS_CCO_MT_GENERAL_SETTINGS (EXECUTIONGUID,EXECUTIONSTARTTIMESTAMP,PROFILEID,PROFILE_NAME, TECH_TYPE,CLID,CCO_ACTIVE,CCO_AVAIL,CCO_CLUSTER_SWITCH,
+                                            CLUSTERSIZECELLCOUNT,
+              OVERSHOOT_SWITCH, OVERSHOOT_ALLOWED_PERC, OVERSHOOT_MIN_ACTIVE_NE, OVERSHOOT_MIN_SITE_IN_AREA, UNDERSHOOTER_SWITCH, UNDERSHOOT_IRAT_PER_CALL, 
+            UNDERSHOT_IRAT_ATTEMPT,UNDERSHOOT_BORDER_TRAFFIC_RT, UNDERSHOOT_MAX_ACTIVE_NE, UNDERSHOOT_TOLERATED_ERAB_DIF, UNDERSHOOT_ALLOWED_HO_PERCALL, UNDERSHOOT_CRITICAL_BAD_COV, 
+            ETILT_SWITCH, UNDERSOOT_ALLOWED_PRB_UTIL,
+            ETILT_MIN_DELTA_VALUE, ETILT_MAX_DELTA_VALUE, ETILT_MIN_VALUE ,ETILT_MAX_VALUE, CARRIERPOWER_SWITCH, POWER_MIN_DELTA_VALUE, POWER_MAX_DELTA_VALUE, 
+            POWER_MIN_VALUE, POWER_MAX_VALUE, REPEAT_AVOIDANCE_SWITCH, AVOIDANCE_PERIOD, COVERAGE_PROTECTION_MULTIPLIER, MAXIMUM_RESOURCE_UTILIZATION, MAXIMUM_CAPACITY_FAILURE, 
+            ROLLBACK_SWITCH, ROLLBACK_EXCLUDED_SWITCH, ROLLBACK_RESOURCE_UTIL, ROLLBACK_MAX_CAPACITY_FAILURE, ROLLBACK_VOICE_DROP_RATE, ROLLBACK_NUMBER_OF_VOICE_DROP, 
+            ROLLBACK_PACKET_DROP_RATE, ROLLBACK_NUMBER_OF_PACKET_DROP, ROLLBACK_IRAT_HO_ACTIVIT_CALL, ROLLBACK_NUMBER_IRAT_HO_ACT, ROLLBACK_CA_DATAVOLUME, 
+            ROLLBACK_CLUSTER_DATA_VOLUME, ROLLBACK_CLUSTER_VOICE_TRAFFIC,
+            ROP_STARTTIME,ROP_ENDTIME,
+            CCO_WEAKCOVERAGE_SWITCH, WORSTCELLTHRESHOLD, WEAKCOVERAGERRSPTRESHOLD, TILTCOEFF, HEIGHTCOEFF, DISTANCECOEFF, PRBUTILIZATIONCOEFF, RELATIVEAZIMUTHCOEFF,BADCOVERAGECOEFF,  
+            IRATCOEFFICENT,
+            BINSIZEINMETER
+            )      
+  SELECT V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID,
+         V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP,
+          PROFILEID,PROFILENAME, '4G' AS TECH_TYPE, 322 AS CLID, CCO_4G_ACTIVE,CCO_AVAIL,CCO_CREATEISOLATEDCLUSTER,CLUSTERSIZECELLCOUNT, 
+            OVERSHOOT_SWITCH, 
+            OVERSHOOT_ALLOWED_PERC /100 /* make it percentage */,
+            OVERSHOOT_MIN_ACTIVE_NE, OVERSHOOT_MIN_SITE_IN_AREA, UNDERSHOOTER_SWITCH, UNDERSHOOT_IRAT_PER_CALL, 
+            UNDERSHOT_IRAT_ATTEMPT,UNDERSHOOT_BORDER_TRAFFIC_RT, UNDERSHOOT_MAX_ACTIVE_NE, UNDERSHOOT_TOLERATED_ERAB_DIF, UNDERSHOOT_ALLOWED_HO_PERCALL, UNDERSHOOT_CRITICAL_BAD_COV, 
+            ETILT_SWITCH, UNDERSOOT_ALLOWED_PRB_UTIL,
+            ETILT_MIN_DELTA_VALUE, ETILT_MAX_DELTA_VALUE, ETILT_MIN_VALUE, ETILT_MAX_VALUE, CARRIERPOWER_SWITCH, POWER_MIN_DELTA_VALUE, POWER_MAX_DELTA_VALUE, 
+            POWER_MIN_VALUE, POWER_MAX_VALUE, REPEAT_AVOIDANCE_SWITCH, AVOIDANCE_PERIOD, COVERAGEPROTECTIONMULTIPLIER, MAXIMUMRESOURCEUTILIZATION, MAXIMUMCAPACITYFAILURE, 
+            ROLLBACK_SWITCH, ROLLBACK_EXCLUDED_SWITCH, ROLLBACK_RESOURCE_UTIL, ROLLBACK_MAX_CAPACITY_FAULE, ROLLBACK_VOICE_DROP_RATE, ROLLBACK_NUMBER_OF_VOICE_DROP, 
+            ROLLBACK_PACKET_DROP_RATE, ROLLBACK_NUMBER_OF_PACKET_DROP, ROLLBACK_IRAT_HO_ACTIVIT_CALL, ROLLBACK_NUMBER_IRAT_HO_ACT, ROLLBACK_CA_DATAVOLUME, 
+            ROLLBACK_CLUSTER_DATA_VOLUME, ROLLBACK_CLUSTER_VOICE_TRAFFIC,
+            LITESON_HELPERS.GET_STARTDATE(V_ROW_LS_CCO_SETTINGS.OBSERVATIONPERIODS,'ActionPeriod',PR.PROFILEID),
+            LITESON_HELPERS.GET_ENDDATE(V_ROW_LS_CCO_SETTINGS.OBSERVATIONPERIODS,'ActionPeriod',PR.PROFILEID),
+            CCO_WEAKCOVERAGE_SWITCH, WORSTCELLTHRESHOLD, WEAKCOVERAGERRSPTRESHOLD, TILTCOEFF, HEIGHTCOEFF, DISTANCECOEFF, PRBUTILIZATIONCOEFFICIENT,
+            RELATIVEAZIMUTHCOEFF,BADCOVERAGECOEFFICIENT,
+            100 AS IRATCOEFFICENT,
+            100 AS BINSIZEINMETER
+        FROM XMLTABLE ( '/ExecutionPlan/ExecutionPlanProfiles/ExecutionPlanProfile'
+                            PASSING  V_ROW_LS_CCO_SETTINGS.EXECUTIONPROFILE
+                            COLUMNS 
+                            ProfileId NUMBER (12) PATH 'Profile/Id',
+                            ProfileName VARCHAR2(100 BYTE) PATH 'Profile/Name',
+                            ProfileType VARCHAR2 (30 BYTE) PATH 'Profile/Type',
+                             XmlGroups XMLTYPE  PATH 'ProfileParameters/GenericProfile/Groups'
+                       ) pr
+            CROSS JOIN
+      XMLTABLE 
+      (
+       '/Groups'  
+      PASSING pr.XmlGroups COLUMNS
+      CCO_4G_ACTIVE                 VARCHAR2 (32 BYTE) PATH 'Group[GroupName="GeneralSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ObservationPeriods"]/Fields/Field[Name="CCO_4G_ACTIVE"]/Value',
+      CCO_Avail                      VARCHAR2 (32 BYTE) PATH 'Group[GroupName="GeneralSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ObservationPeriods"]/Fields/Field[Name="CCO_Avail"]/Value',
+      CCO_CreateIsolatedCluster      VARCHAR2 (32 BYTE) PATH 'Group[GroupName="GeneralSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ObservationPeriods"]/Fields/Field[Name="CCO_CreateIsolatedCluster"]/Value',
+      ClusterSizeCellCount           VARCHAR2 (32 BYTE) PATH 'Group[GroupName="GeneralSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ObservationPeriods"]/Fields/Field[Name="ClusterSizeCellCount"]/Value',
+      CAT1_ARFCN_LIST  XMLTYPE PATH  'Group[GroupName="GeneralSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="CoverageLayerSettings"]/Fields/Field[Name="CAT1_ARFCN_LIST"]/Values',
+      CAT2_ARFCN_LIST  XMLTYPE PATH  'Group[GroupName="GeneralSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="CoverageLayerSettings"]/Fields/Field[Name="CAT2_ARFCN_LIST"]/Values',
+      CAT3_ARFCN_LIST  XMLTYPE PATH  'Group[GroupName="GeneralSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="CoverageLayerSettings"]/Fields/Field[Name="CAT3_ARFCN_LIST"]/Values',
+      CAT4_ARFCN_LIST  XMLTYPE PATH  'Group[GroupName="GeneralSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="CoverageLayerSettings"]/Fields/Field[Name="CAT4_ARFCN_LIST"]/Values',
+      POLICY_MAPPING   XMLTYPE PATH  'Group[GroupName="GeneralSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ActionMappingPolicy"]/Fields/Field/TableRows',
+      OVERSHOOT_SWITCH               VARCHAR2 (32 BYTE) PATH 'Group[GroupName="OvershooterCellDetectionandResolution4G"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="OvershooterCellDetectionandResolution"]/Fields/Field[Name="CCO_OVERSHOOT_ACTIVE"]/Value',
+      OVERSHOOT_ALLOWED_PERC         VARCHAR2 (32 BYTE) PATH 'Group[GroupName="OvershooterCellDetectionandResolution4G"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="OvershooterCellDetectionandResolution"]/Fields/Field[Name="AllowedOvershootPercentage_4G"]/Value',
+      OVERSHOOT_MIN_ACTIVE_NE        VARCHAR2 (32 BYTE) PATH 'Group[GroupName="OvershooterCellDetectionandResolution4G"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="OvershooterCellDetectionandResolution"]/Fields/Field[Name="MinimumNumberofActiveNeighbors"]/Value',
+      OVERSHOOT_MIN_SITE_IN_AREA     VARCHAR2 (32 BYTE) PATH 'Group[GroupName="OvershooterCellDetectionandResolution4G"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="OvershooterCellDetectionandResolution"]/Fields/Field[Name="MinNofSitesInServingArea"]/Value',
+      UNDERSHOOTER_SWITCH            VARCHAR2 (32 BYTE) PATH 'Group[GroupName="UndershooterCellDetectionAndResolution4G"]/Tabs/Tab[Name="4GCoverage"]/Sections/Section[Name="UndershooterCellDetectionAndResolution"]/Fields/Field[Name="CCO_UNDERSHOOTER_ACTIVE"]/Value',
+      UNDERSHOOT_IRAT_PER_CALL       VARCHAR2 (32 BYTE) PATH 'Group[GroupName="UndershooterCellDetectionAndResolution4G"]/Tabs/Tab[Name="4GCoverage"]/Sections/Section[Name="UndershooterCellDetectionAndResolution"]/Fields/Field[Name="AllowedIRATActivityperCallCG"]/Value',
+      UNDERSHOT_IRAT_ATTEMPT         VARCHAR2 (32 BYTE) PATH 'Group[GroupName="UndershooterCellDetectionAndResolution4G"]/Tabs/Tab[Name="4GCoverage"]/Sections/Section[Name="UndershooterCellDetectionAndResolution"]/Fields/Field[Name="AllowedIRATAttempt"]/Value',
+      UNDERSHOOT_BORDER_TRAFFIC_RT   NUMBER             PATH  'Group[GroupName="UndershooterCellDetectionAndResolution4G"]/Tabs/Tab[Name="4GCoverage"]/Sections/Section[Name="UndershooterCellDetectionAndResolution"]/Fields/Field[Name="AllowedBorderTrafficRatio"]/Value',
+      UNDERSHOOT_MAX_ACTIVE_NE       VARCHAR2 (32 BYTE) PATH 'Group[GroupName="UndershooterCellDetectionAndResolution4G"]/Tabs/Tab[Name="4GCoverage"]/Sections/Section[Name="UndershooterCellDetectionAndResolution"]/Fields/Field[Name="MaximumNumberofActiveNeighborsCG"]/Value',
+      UNDERSHOOT_TOLERATED_ERAB_DIF  VARCHAR2 (32 BYTE) PATH 'Group[GroupName="UndershooterCellDetectionAndResolution4G"]/Tabs/Tab[Name="4GCoverage"]/Sections/Section[Name="UndershooterCellDetectionAndResolution"]/Fields/Field[Name="ToleratedTrafficErabDifference"]/Value',
+      UNDERSHOOT_ALLOWED_HO_PERCALL  VARCHAR2 (32 BYTE) PATH 'Group[GroupName="UndershooterCellDetectionAndResolution4G"]/Tabs/Tab[Name="4GCoverage"]/Sections/Section[Name="UndershooterCellDetectionAndResolution"]/Fields/Field[Name="Allow_Cov_HO_percall"]/Value',
+      UNDERSHOOT_CRITICAL_BAD_COV    VARCHAR2 (32 BYTE) PATH 'Group[GroupName="UndershooterCellDetectionAndResolution4G"]/Tabs/Tab[Name="4GCoverage"]/Sections/Section[Name="UndershooterCellDetectionAndResolution"]/Fields/Field[Name="Critical_Bad_Cov_Threshold"]/Value',
+      UNDERSOOT_ALLOWED_PRB_UTIL     VARCHAR2 (32 BYTE) PATH 'Group[GroupName="UndershooterCellDetectionAndResolution4G"]/Tabs/Tab[Name="4GCoverage"]/Sections/Section[Name="UndershooterCellDetectionAndResolution"]/Fields/Field[Name="AllowedMaxPRBUtilization"]/Value', 
+      ETILT_SWITCH                   VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ManagedParameters"]/Fields/Field[Name="electricalAntennaTilt"]/Value',
+      ETILT_Min_Delta_Value          VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ManagedParameters"]/Fields/Field[Name="electricalAntennaTiltMinimumDeltaValue"]/Value',
+      ETILT_Max_Delta_Value          VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ManagedParameters"]/Fields/Field[Name="electricalAntennaTiltMaximumDeltaValue"]/Value',
+      ETILT_Min_Value                VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ManagedParameters"]/Fields/Field[Name="electricalAntennaTiltMinimumValue"]/Value',
+      ETILT_MAX_VALUE                VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ManagedParameters"]/Fields/Field[Name="electricalAntennaTiltMaximumValue"]/Value',
+      CARRIERPOWER_SWITCH            VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ManagedParameters"]/Fields/Field[Name="carrierPowerCG"]/Value',      POWER_MIN_DELTA_VALUE          VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ManagedParameters"]/Fields/Field[Name="carrierPowerMinimumDeltaValue"]/Value',
+      POWER_MAX_DELTA_VALUE          VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ManagedParameters"]/Fields/Field[Name="carrierPowerMaximumDeltaValue"]/Value',
+      POWER_MIN_VALUE                VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ManagedParameters"]/Fields/Field[Name="carrierPowerMinimumValue"]/Value',
+      POWER_MAX_VALUE                VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ManagedParameters"]/Fields/Field[Name="carrierPowerMaximumValue"]/Value',
+      REPEAT_AVOIDANCE_SWITCH        VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ManagedParameters"]/Fields/Field[Name="Repeat_FW_BW_Avoidance"]/Value',
+      Avoidance_Period               VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ManagedParameters"]/Fields/Field[Name="Avoidance_Period"]/Value',   
+      CoverageProtectionMultiplier   VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="UptiltActionConstraints"]/Fields/Field[Name="CoverageProtectionMultiplier"]/Value',
+      MaximumResourceUtilization     VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="UptiltActionConstraints"]/Fields/Field[Name="MaximumResourceUtilization"]/Value',
+      MaximumCapacityFailure         VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="UptiltActionConstraints"]/Fields/Field[Name="MaximumCapacityFailure"]/Value',
+      ROLLBACK_SWITCH                VARCHAR2 (32 BYTE) PATH 'Group[GroupName="RollbackSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="Rollback"]/Fields/Field[Name="EnableRollback"]/Value',
+      ROLLBACK_EXCLUDED_SWITCH       VARCHAR2 (32 BYTE) PATH 'Group[GroupName="RollbackSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="Rollback"]/Fields/Field[Name="EnableRollbackIfExcluded"]/Value',
+      ROLLBACK_RESOURCE_UTIL         VARCHAR2 (32 BYTE) PATH 'Group[GroupName="RollbackSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="Rollback"]/Fields/Field[Name="MaximumResourceUtilizationRollback"]/Value',
+      ROLLBACK_MAX_CAPACITY_FAULE    VARCHAR2 (32 BYTE) PATH 'Group[GroupName="RollbackSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="Rollback"]/Fields/Field[Name="MaximumCapacityFailuresRollback"]/Value',
+      ROLLBACK_VOICE_DROP_RATE       VARCHAR2 (32 BYTE) PATH 'Group[GroupName="RollbackSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="PercentageDeltaThresholdsforRollback"]/Fields/Field[Name="VoiceDropRateThreshold"]/Value',
+      ROLLBACK_NUMBER_OF_VOICE_DROP  VARCHAR2 (32 BYTE) PATH 'Group[GroupName="RollbackSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="PercentageDeltaThresholdsforRollback"]/Fields/Field[Name="NumberofVoiceDrops"]/Value',
+      ROLLBACK_PACKET_DROP_RATE      VARCHAR2 (32 BYTE) PATH 'Group[GroupName="RollbackSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="PercentageDeltaThresholdsforRollback"]/Fields/Field[Name="PacketDropRateThreshold"]/Value',
+      ROLLBACK_NUMBER_fOF_PACKET_DROP VARCHAR2 (32 BYTE) PATH 'Group[GroupName="RollbackSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="PercentageDeltaThresholdsforRollback"]/Fields/Field[Name="NumberofPacketDrops"]/Value',
+      ROLLBACK_IRAT_HO_ACTIVIT_CALL  VARCHAR2 (32 BYTE) PATH 'Group[GroupName="RollbackSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="PercentageDeltaThresholdsforRollback"]/Fields/Field[Name="IRATHandoverActivityperCall"]/Value',
+      ROLLBACK_NUMBER_IRAT_HO_ACT    VARCHAR2 (32 BYTE) PATH 'Group[GroupName="RollbackSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="PercentageDeltaThresholdsforRollback"]/Fields/Field[Name="NumberofIRATHandoverActivity"]/Value',
+      ROLLBACK_CA_DATAVOLUME         VARCHAR2 (32 BYTE) PATH 'Group[GroupName="RollbackSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="PercentageDeltaThresholdsforRollback"]/Fields/Field[Name="CADataVolume"]/Value',
+      ROLLBACK_CLUSTER_DATA_VOLUME   VARCHAR2 (32 BYTE) PATH 'Group[GroupName="RollbackSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="PercentageDeltaThresholdsforRollback"]/Fields/Field[Name="ClusterDataVolume"]/Value',
+      ROLLBACK_Cluster_Voice_Traffic VARCHAR2 (32 BYTE) PATH 'Group[GroupName="RollbackSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="PercentageDeltaThresholdsforRollback"]/Fields/Field[Name="ClusterVoiceTraffic"]/Value',
+      CCO_WEAKCOVERAGE_SWITCH        VARCHAR2 (32 BYTE) PATH 'Group[GroupName="WeakCoverageDetectionandResolution4G"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="WeakCoverageDetectionandResolution"]/Fields/Field[Name="CCO_WEAKCOVERAGE_ACTIVE"]/Value',
+      WORSTCELLTHRESHOLD             VARCHAR2 (32 BYTE) PATH 'Group[GroupName="WeakCoverageDetectionandResolution4G"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="WeakCoverageDetectionandResolution"]/Fields/Field[Name="WorstCellThreshold"]/Value',
+      WEAKCOVERAGERRSPTRESHOLD       VARCHAR2 (32 BYTE) PATH 'Group[GroupName="WeakCoverageDetectionandResolution4G"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="WeakCoverageDetectionandResolution"]/Fields/Field[Name="BadCoverageRrspThreshold"]/Value',
+      TILTCOEFF                      VARCHAR2 (32 BYTE) PATH 'Group[GroupName="WeakCoverageDetectionandResolution4G"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="Weak Coverage Coefficients"]/Fields/Field[Name="tiltCoeff"]/Value',
+      HEIGHTCOEFF                    VARCHAR2 (32 BYTE) PATH 'Group[GroupName="WeakCoverageDetectionandResolution4G"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="Weak Coverage Coefficients"]/Fields/Field[Name="heightCoeff"]/Value',
+      DISTANCECOEFF                  VARCHAR2 (32 BYTE) PATH 'Group[GroupName="WeakCoverageDetectionandResolution4G"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="Weak Coverage Coefficients"]/Fields/Field[Name="distanceCoeff"]/Value',
+      PRBUTILIZATIONCOEFFICIENT      VARCHAR2 (32 BYTE) PATH 'Group[GroupName="WeakCoverageDetectionandResolution4G"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="Weak Coverage Coefficients"]/Fields/Field[Name="PrbUtilizationCoefficient"]/Value',
+      RELATIVEAZIMUTHCOEFF           VARCHAR2 (32 BYTE) PATH 'Group[GroupName="WeakCoverageDetectionandResolution4G"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="Weak Coverage Coefficients"]/Fields/Field[Name="relativeAzimuthCoeff"]/Value',
+      BADCOVERAGECOEFFICIENT         VARCHAR2 (32 BYTE) PATH 'Group[GroupName="WeakCoverageDetectionandResolution4G"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="Weak Coverage Coefficients"]/Fields/Field[Name="BadCoverageCoefficient"]/Value'
+
+   ) m1
+   where CCO_4G_ACTIVE='true';
+
+   /********************** FILLING 3G SETTINGS  *******************************************************/
+
+INSERT INTO LS_CCO_MT_GENERAL_SETTINGS (EXECUTIONGUID,EXECUTIONSTARTTIMESTAMP,PROFILEID,PROFILE_NAME,TECH_TYPE,CLID,CCO_ACTIVE, CCO_AVAIL, CCO_CLUSTER_SWITCH, 
+                CLUSTERSIZECELLCOUNT, 
+                OVERSHOOT_SWITCH, OVERSHOOT_ALLOWED_PERC, OVERSHOOT_SHO_OVERHEAD, OVERSHOOT_MIN_ACTIVE_NE, OVERSHOOT_MIN_SITE_IN_AREA, UNDERSHOOTER_SWITCH, 
+            UNDERSHOOT_SHO_OVERHEAD, UNDERSHOOT_IRAT_PER_CALL, UNDERSHOT_IRAT_ATTEMPT, UNDERSHOOT_MAX_ACTIVE_NE,UNDERSHOOT_TOLERATED_TRAFF, ETILT_SWITCH, 
+            ETILT_MIN_DELTA_VALUE, ETILT_MAX_DELTA_VALUE, ETILT_MIN_VALUE ,ETILT_MAX_VALUE, CARRIERPOWER_SWITCH, POWER_MIN_DELTA_VALUE, POWER_MAX_DELTA_VALUE, 
+            POWER_MIN_VALUE, POWER_MAX_VALUE,  
+             REPEAT_AVOIDANCE_SWITCH,
+            AVOIDANCE_PERIOD, COVERAGE_PROTECTION_MULTIPLIER, MAXIMUM_RESOURCE_UTILIZATION, MAXIMUM_CAPACITY_FAILURE, ROLLBACK_SWITCH, ROLLBACK_EXCLUDED_SWITCH, 
+            ROLLBACK_RESOURCE_UTIL, ROLLBACK_MAX_CAPACITY_FAILURE, ROLLBACK_VOICE_DROP_RATE, ROLLBACK_NUMBER_OF_VOICE_DROP, ROLLBACK_PACKET_DROP_RATE, 
+            ROLLBACK_NUMBER_OF_PACKET_DROP, ROLLBACK_IRAT_HO_ACTIVIT_CALL, ROLLBACK_NUMBER_IRAT_HO_ACT, ROLLBACK_CA_DATAVOLUME, ROLLBACK_CLUSTER_DATA_VOLUME, 
+            ROLLBACK_CLUSTER_VOICE_TRAFFIC ,
+            ROP_STARTTIME,ROP_ENDTIME
+            ) 
+  SELECT  
+            V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID,
+            V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP,
+            PROFILEID,ProfileName,'3G' AS TECH_TYPE,321 AS CLID, CCO_3G_ACTIVE, CCO_AVAIL, CCO_CREATEISOLATEDCLUSTER, CLUSTERSIZECELLCOUNT,    
+            OVERSHOOT_SWITCH, 
+            OVERSHOOT_ALLOWED_PERC /100 /* make it percentage */,
+             OVERSHOOT_SHO_OVERHEAD, OVERSHOOT_MIN_ACTIVE_NE, 
+            OVERSHOOT_MIN_SITE_IN_AREA, UNDERSHOOTER_SWITCH,UNDERSHOOT_SHO_OVERHEAD, UNDERSHOOT_IRAT_PER_CALL, UNDERSHOT_IRAT_ATTEMPT, UNDERSHOOT_MAX_ACTIVE_NE, 
+            UNDERSHOOT_TOLERATED_TRAFF /100 ,
+            ETILT_SWITCH,ETILT_MIN_DELTA_VALUE, ETILT_MAX_DELTA_VALUE, ETILT_MIN_VALUE ,ETILT_MAX_VALUE, CARRIERPOWER_SWITCH, POWER_MIN_DELTA_VALUE, POWER_MAX_DELTA_VALUE, 
+            POWER_MIN_VALUE, POWER_MAX_VALUE, 
+            REPEAT_AVOIDANCE_SWITCH,AVOIDANCE_PERIOD, COVERAGEPROTECTIONMULTIPLIER, MAXIMUMRESOURCEUTILIZATION, 
+            MAXIMUMCAPACITYFAILURE, ROLLBACK_SWITCH, ROLLBACK_EXCLUDED_SWITCH,ROLLBACK_RESOURCE_UTIL, ROLLBACK_MAX_CAPACITY_FAULE, ROLLBACK_VOICE_DROP_RATE, 
+            ROLLBACK_NUMBER_OF_VOICE_DROP, ROLLBACK_PACKET_DROP_RATE,ROLLBACK_NUMBER_OF_PACKET_DROP, ROLLBACK_IRAT_HO_ACTIVIT_CALL, ROLLBACK_NUMBER_IRAT_HO_ACT,
+            ROLLBACK_CA_DATAVOLUME, ROLLBACK_CLUSTER_DATA_VOLUME,  ROLLBACK_CLUSTER_VOICE_TRAFFIC,
+            LITESON_HELPERS.GET_STARTDATE(V_ROW_LS_CCO_SETTINGS.OBSERVATIONPERIODS,'ActionPeriod',PR.PROFILEID),
+            LITESON_HELPERS.GET_ENDDATE(V_ROW_LS_CCO_SETTINGS.OBSERVATIONPERIODS,'ActionPeriod',PR.PROFILEID)
+        FROM XMLTABLE ( '/ExecutionPlan/ExecutionPlanProfiles/ExecutionPlanProfile'
+                            PASSING  V_ROW_LS_CCO_SETTINGS.EXECUTIONPROFILE
+                            COLUMNS 
+                            ProfileId NUMBER (12) PATH 'Profile/Id',
+                            ProfileName VARCHAR2(100 BYTE) PATH 'Profile/Name',
+                            ProfileType VARCHAR2 (30 BYTE) PATH 'Profile/Type',
+                             XmlGroups XMLTYPE  PATH 'ProfileParameters/GenericProfile/Groups'
+                       ) pr
+            CROSS JOIN
+      XMLTABLE 
+      (
+       '/Groups'
+      PASSING pr.XmlGroups COLUMNS
+      CCO_3G_ACTIVE               VARCHAR2 (32 BYTE) PATH 'Group[GroupName="GeneralSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ObservationPeriods"]/Fields/Field[Name="CCO_3G_ACTIVE"]/Value',
+      CCO_Avail                   VARCHAR2 (32 BYTE) PATH 'Group[GroupName="GeneralSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ObservationPeriods"]/Fields/Field[Name="CCO_Avail"]/Value',
+      CCO_CreateIsolatedCluster   VARCHAR2 (32 BYTE) PATH 'Group[GroupName="GeneralSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ObservationPeriods"]/Fields/Field[Name="CCO_CreateIsolatedCluster"]/Value',
+      ClusterSizeCellCount        VARCHAR2 (32 BYTE) PATH 'Group[GroupName="GeneralSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ObservationPeriods"]/Fields/Field[Name="ClusterSizeCellCount"]/Value',
+      OVERSHOOT_SWITCH            VARCHAR2 (32 BYTE) PATH 'Group[GroupName="OvershooterCellDetectionandResolution3G"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="OvershooterCellDetectionandResolution"]/Fields/Field[Name="CCO_OVERSHOOT_ACTIVE"]/Value',
+      OVERSHOOT_ALLOWED_PERC      VARCHAR2 (32 BYTE) PATH 'Group[GroupName="OvershooterCellDetectionandResolution3G"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="OvershooterCellDetectionandResolution"]/Fields/Field[Name="AllowedOvershootPercentage_3G"]/Value',
+      OVERSHOOT_SHO_OVERHEAD      VARCHAR2 (32 BYTE) PATH 'Group[GroupName="OvershooterCellDetectionandResolution3G"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="OvershooterCellDetectionandResolution"]/Fields/Field[Name="CCO_OVERSHOOT_SHO_OVERHEAD"]/Value',
+      OVERSHOOT_MIN_ACTIVE_NE     VARCHAR2 (32 BYTE) PATH 'Group[GroupName="OvershooterCellDetectionandResolution3G"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="OvershooterCellDetectionandResolution"]/Fields/Field[Name="MinimumNumberofActiveNeighbors"]/Value',
+      OVERSHOOT_MIN_SITE_IN_AREA  VARCHAR2 (32 BYTE) PATH 'Group[GroupName="OvershooterCellDetectionandResolution3G"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="OvershooterCellDetectionandResolution"]/Fields/Field[Name="MinNofSitesInServingArea"]/Value',
+      UNDERSHOOTER_SWITCH         VARCHAR2 (32 BYTE) PATH 'Group[GroupName="UndershooterCellDetectionAndResolution3G"]/Tabs/Tab[Name="3GCoverage"]/Sections/Section[Name="UndershooterCellDetectionAndResolution"]/Fields/Field[Name="CCO_UNDERSHOOTER_ACTIVE"]/Value',
+      UNDERSHOOT_SHO_OVERHEAD     VARCHAR2 (32 BYTE) PATH 'Group[GroupName="UndershooterCellDetectionAndResolution3G"]/Tabs/Tab[Name="3GCoverage"]/Sections/Section[Name="UndershooterCellDetectionAndResolution"]/Fields/Field[Name="CG_OVERSHOOT_SHO_OVERHEAD"]/Value',
+      UNDERSHOOT_IRAT_PER_CALL    VARCHAR2 (32 BYTE) PATH 'Group[GroupName="UndershooterCellDetectionAndResolution3G"]/Tabs/Tab[Name="3GCoverage"]/Sections/Section[Name="UndershooterCellDetectionAndResolution"]/Fields/Field[Name="AllowedIRATActivityperCallCG"]/Value',
+      UNDERSHOT_IRAT_ATTEMPT      VARCHAR2 (32 BYTE) PATH 'Group[GroupName="UndershooterCellDetectionAndResolution3G"]/Tabs/Tab[Name="3GCoverage"]/Sections/Section[Name="UndershooterCellDetectionAndResolution"]/Fields/Field[Name="AllowedIRATAttempt"]/Value',
+      UNDERSHOOT_MAX_ACTIVE_NE    VARCHAR2 (32 BYTE) PATH 'Group[GroupName="UndershooterCellDetectionAndResolution3G"]/Tabs/Tab[Name="3GCoverage"]/Sections/Section[Name="UndershooterCellDetectionAndResolution"]/Fields/Field[Name="MaximumNumberofActiveNeighborsCG"]/Value',
+      UNDERSHOOT_TOLERATED_TRAFF  VARCHAR2 (32 BYTE) PATH 'Group[GroupName="UndershooterCellDetectionAndResolution3G"]/Tabs/Tab[Name="3GCoverage"]/Sections/Section[Name="UndershooterCellDetectionAndResolution"]/Fields/Field[Name="ToleratedTrafficDifference"]/Value',    
+      ETILT_SWITCH                   VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ManagedParameters"]/Fields/Field[Name="electricalAntennaTilt"]/Value',
+      ETILT_Min_Delta_Value          VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ManagedParameters"]/Fields/Field[Name="electricalAntennaTiltMinimumDeltaValue"]/Value',
+      ETILT_Max_Delta_Value          VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ManagedParameters"]/Fields/Field[Name="electricalAntennaTiltMaximumDeltaValue"]/Value',
+      ETILT_Min_Value                VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ManagedParameters"]/Fields/Field[Name="electricalAntennaTiltMinimumValue"]/Value',
+      ETILT_MAX_VALUE                VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ManagedParameters"]/Fields/Field[Name="electricalAntennaTiltMaximumValue"]/Value',
+      CARRIERPOWER_SWITCH            VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ManagedParameters"]/Fields/Field[Name="carrierPowerCG"]/Value',
+      POWER_MIN_DELTA_VALUE          VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ManagedParameters"]/Fields/Field[Name="carrierPowerMinimumDeltaValue"]/Value',
+      POWER_MAX_DELTA_VALUE          VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ManagedParameters"]/Fields/Field[Name="carrierPowerMaximumDeltaValue"]/Value',
+      POWER_MIN_VALUE                VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ManagedParameters"]/Fields/Field[Name="carrierPowerMinimumValue"]/Value',
+      POWER_MAX_VALUE                VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ManagedParameters"]/Fields/Field[Name="carrierPowerMaximumValue"]/Value',
+      REPEAT_AVOIDANCE_SWITCH        VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ManagedParameters"]/Fields/Field[Name="Repeat_FW_BW_Avoidance"]/Value',
+      Avoidance_Period               VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ManagedParameters"]/Fields/Field[Name="Avoidance_Period"]/Value',   
+      CoverageProtectionMultiplier   VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="UptiltActionConstraints"]/Fields/Field[Name="CoverageProtectionMultiplier"]/Value',
+      MaximumResourceUtilization     VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="UptiltActionConstraints"]/Fields/Field[Name="MaximumResourceUtilization"]/Value',
+      MaximumCapacityFailure         VARCHAR2 (32 BYTE) PATH 'Group[GroupName="ManagedParameters"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="UptiltActionConstraints"]/Fields/Field[Name="MaximumCapacityFailure"]/Value',
+      ROLLBACK_SWITCH                VARCHAR2 (32 BYTE) PATH 'Group[GroupName="RollbackSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="Rollback"]/Fields/Field[Name="EnableRollback"]/Value',
+      ROLLBACK_EXCLUDED_SWITCH       VARCHAR2 (32 BYTE) PATH 'Group[GroupName="RollbackSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="Rollback"]/Fields/Field[Name="EnableRollbackIfExcluded"]/Value',
+      ROLLBACK_RESOURCE_UTIL         VARCHAR2 (32 BYTE) PATH 'Group[GroupName="RollbackSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="Rollback"]/Fields/Field[Name="MaximumResourceUtilizationRollback"]/Value',
+      ROLLBACK_MAX_CAPACITY_FAULE    VARCHAR2 (32 BYTE) PATH 'Group[GroupName="RollbackSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="Rollback"]/Fields/Field[Name="MaximumCapacityFailuresRollback"]/Value',
+      ROLLBACK_VOICE_DROP_RATE       VARCHAR2 (32 BYTE) PATH 'Group[GroupName="RollbackSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="PercentageDeltaThresholdsforRollback"]/Fields/Field[Name="VoiceDropRateThreshold"]/Value',
+      ROLLBACK_NUMBER_OF_VOICE_DROP  VARCHAR2 (32 BYTE) PATH 'Group[GroupName="RollbackSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="PercentageDeltaThresholdsforRollback"]/Fields/Field[Name="NumberofVoiceDrops"]/Value',
+      ROLLBACK_PACKET_DROP_RATE      VARCHAR2 (32 BYTE) PATH 'Group[GroupName="RollbackSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="PercentageDeltaThresholdsforRollback"]/Fields/Field[Name="PacketDropRateThreshold"]/Value',
+      ROLLBACK_NUMBER_OF_PACKET_DROP VARCHAR2 (32 BYTE) PATH 'Group[GroupName="RollbackSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="PercentageDeltaThresholdsforRollback"]/Fields/Field[Name="NumberofPacketDrops"]/Value',
+      ROLLBACK_IRAT_HO_ACTIVIT_CALL  VARCHAR2 (32 BYTE) PATH 'Group[GroupName="RollbackSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="PercentageDeltaThresholdsforRollback"]/Fields/Field[Name="IRATHandoverActivityperCall"]/Value',
+      ROLLBACK_NUMBER_IRAT_HO_ACT    VARCHAR2 (32 BYTE) PATH 'Group[GroupName="RollbackSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="PercentageDeltaThresholdsforRollback"]/Fields/Field[Name="NumberofIRATHandoverActivity"]/Value',
+      ROLLBACK_CA_DATAVOLUME         VARCHAR2 (32 BYTE) PATH 'Group[GroupName="RollbackSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="PercentageDeltaThresholdsforRollback"]/Fields/Field[Name="CADataVolume"]/Value',
+      ROLLBACK_CLUSTER_DATA_VOLUME   VARCHAR2 (32 BYTE) PATH 'Group[GroupName="RollbackSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="PercentageDeltaThresholdsforRollback"]/Fields/Field[Name="ClusterDataVolume"]/Value',
+      ROLLBACK_Cluster_Voice_Traffic  VARCHAR2 (32 BYTE) PATH 'Group[GroupName="RollbackSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="PercentageDeltaThresholdsforRollback"]/Fields/Field[Name="ClusterVoiceTraffic"]/Value'
+  ) m1
+  where CCO_3G_ACTIVE='true';
+       COMMIT;
+  /************************************ FILLING ACTION POLICIES FOR ALL TECH ********************************************************/
+     INSERT INTO LS_CCO_MT_ACTION_POLICIES (EXECUTIONGUID, EXECUTIONSTARTTIMESTAMP, PROFILEID, PROFILE_NAME, CATEGORY1, CATEGORY2, CATEGORY3, CATEGORY4, ACTION_R) 
+ SELECT  V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID, V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP, PROFILEID,ProfileName,CATEGORY1,CATEGORY2,CATEGORY3,CATEGORY4,ACTION_R
+       FROM XMLTABLE ('/ExecutionPlan/ExecutionPlanProfiles/ExecutionPlanProfile'
+                      PASSING V_ROW_LS_CCO_SETTINGS.EXECUTIONPROFILE 
+                      COLUMNS ProfileId NUMBER (12) PATH 'Profile/Id',
+                              ProfileName VARCHAR2 (100 BYTE) PATH 'Profile/Name',
+                              ProfileType VARCHAR2 (30 BYTE) PATH 'Profile/Type',
+                              XmlGroups XMLTYPE PATH 'ProfileParameters/GenericProfile/Groups') pr
+        CROSS JOIN
+            XMLTABLE ('Groups/Group[GroupName="GeneralSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="ActionMappingPolicy"]/Fields/Field/TableRows/TableRow/XmlRowFields'
+                      PASSING (XmlGroups)
+                      COLUMNS 
+                      CATEGORY1 varchar2(100) PATH '/XmlRowFields/XElement/c0',
+                      CATEGORY2 varchar2(100) PATH '/XmlRowFields/XElement/c1',
+                      CATEGORY3 varchar2(100) PATH '/XmlRowFields/XElement/c2',
+                      CATEGORY4 varchar2(100) PATH '/XmlRowFields/XElement/c3',
+                      ACTION_R varchar2(100) PATH '/XmlRowFields/XElement/c4'
+                      ) 
+                      f1;
+
+  /***********************************************************************************************************************/
+
+  INSERT INTO LS_CCO_MT_ARFCN_CATAGORIES( EXECUTIONGUID, EXECUTIONSTARTTIMESTAMP, PROFILEID, PROFILE_NAME, ARFCN_CATEGORY, ARFCN)
+ SELECT  V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID, V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP, ProfileId, ProfileName, 'CATEGORY_1',ARFCN_LIST
+       FROM XMLTABLE ('/ExecutionPlan/ExecutionPlanProfiles/ExecutionPlanProfile'
+                      PASSING V_ROW_LS_CCO_SETTINGS.EXECUTIONPROFILE 
+                      COLUMNS ProfileId NUMBER (12) PATH 'Profile/Id',
+                              ProfileName VARCHAR2 (100 BYTE) PATH 'Profile/Name',
+                              ProfileType VARCHAR2 (30 BYTE) PATH 'Profile/Type',
+                              XmlGroups XMLTYPE PATH 'ProfileParameters/GenericProfile/Groups') pr
+        CROSS JOIN
+            XMLTABLE ('Groups/Group[GroupName="GeneralSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="CoverageLayerSettings"]/Fields/Field[Name="CAT1_ARFCN_LIST"]/Values'
+                      PASSING (XmlGroups)
+                      COLUMNS 
+                      ARFCN_LIST number PATH '/Values'
+                      ) 
+                 f1;
+
+
+ INSERT INTO LS_CCO_MT_ARFCN_CATAGORIES( EXECUTIONGUID, EXECUTIONSTARTTIMESTAMP, PROFILEID, PROFILE_NAME, ARFCN_CATEGORY, ARFCN)
+ SELECT  V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID, V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP, ProfileId, ProfileName, 'CATEGORY_2',ARFCN_LIST
+       FROM XMLTABLE ('/ExecutionPlan/ExecutionPlanProfiles/ExecutionPlanProfile'
+                      PASSING V_ROW_LS_CCO_SETTINGS.EXECUTIONPROFILE 
+                      COLUMNS ProfileId NUMBER (12) PATH 'Profile/Id',
+                              ProfileName VARCHAR2 (100 BYTE) PATH 'Profile/Name',
+                              ProfileType VARCHAR2 (30 BYTE) PATH 'Profile/Type',
+                              XmlGroups XMLTYPE PATH 'ProfileParameters/GenericProfile/Groups') pr
+        CROSS JOIN
+            XMLTABLE ('Groups/Group[GroupName="GeneralSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="CoverageLayerSettings"]/Fields/Field[Name="CAT2_ARFCN_LIST"]/Values'
+                      PASSING (XmlGroups)
+                      COLUMNS 
+                      ARFCN_LIST number PATH '/Values'
+                      ) 
+                      f1;
+
+
+   INSERT INTO LS_CCO_MT_ARFCN_CATAGORIES( EXECUTIONGUID, EXECUTIONSTARTTIMESTAMP, PROFILEID, PROFILE_NAME, ARFCN_CATEGORY, ARFCN)
+ SELECT  V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID, V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP, ProfileId, ProfileName, 'CATEGORY_3',ARFCN_LIST
+       FROM XMLTABLE ('/ExecutionPlan/ExecutionPlanProfiles/ExecutionPlanProfile'
+                      PASSING V_ROW_LS_CCO_SETTINGS.EXECUTIONPROFILE 
+                      COLUMNS ProfileId NUMBER (12) PATH 'Profile/Id',
+                              ProfileName VARCHAR2 (100 BYTE) PATH 'Profile/Name',
+                              ProfileType VARCHAR2 (30 BYTE) PATH 'Profile/Type',
+                              XmlGroups XMLTYPE PATH 'ProfileParameters/GenericProfile/Groups') pr
+        CROSS JOIN
+            XMLTABLE ('Groups/Group[GroupName="GeneralSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="CoverageLayerSettings"]/Fields/Field[Name="CAT3_ARFCN_LIST"]/Values'
+                      PASSING (XmlGroups)
+                      COLUMNS 
+                      ARFCN_LIST number PATH '/Values'
+                      ) 
+                      f1; 
+
+    INSERT INTO LS_CCO_MT_ARFCN_CATAGORIES( EXECUTIONGUID, EXECUTIONSTARTTIMESTAMP, PROFILEID, PROFILE_NAME, ARFCN_CATEGORY, ARFCN)
+ SELECT  V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID, V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP, ProfileId, ProfileName, 'CATEGORY_4',ARFCN_LIST
+       FROM XMLTABLE ('/ExecutionPlan/ExecutionPlanProfiles/ExecutionPlanProfile'
+                      PASSING V_ROW_LS_CCO_SETTINGS.EXECUTIONPROFILE 
+                      COLUMNS ProfileId NUMBER (12) PATH 'Profile/Id',
+                              ProfileName VARCHAR2 (100 BYTE) PATH 'Profile/Name',
+                              ProfileType VARCHAR2 (30 BYTE) PATH 'Profile/Type',
+                              XmlGroups XMLTYPE PATH 'ProfileParameters/GenericProfile/Groups') pr
+        CROSS JOIN
+            XMLTABLE ('Groups/Group[GroupName="GeneralSettings"]/Tabs/Tab[Name="CF"]/Sections/Section[Name="CoverageLayerSettings"]/Fields/Field[Name="CAT4_ARFCN_LIST"]/Values'
+                      PASSING (XmlGroups)
+                      COLUMNS 
+                      ARFCN_LIST number PATH '/Values'
+                      ) 
+                      f1;
+
+  COMMIT; 
+
+ END;
+
+ PROCEDURE FILL_TEMP_RELATION_TABLE
+ IS 
+ BEGIN
+
+      EXECUTE IMMEDIATE 'TRUNCATE TABLE LS_CCO_MT_TEMP_REL';
+
+      INSERT /*+ APPEND */ INTO LS_CCO_MT_TEMP_REL (EXECUTIONGUID, EXECUTIONSTARTTIMESTAMP, SNAPSHOTID, CLID, SITENAME, BSID, CELLID, CELL, SECTORID, ARFCN, BEAMWIDTH, 
+                                                    AZIMUTH, LATITUDE, LONGITUDE, NCLID, NSITENAME, NBSID, NCELLID, NCELL, NSECTORID, NARFCN, NBEAMWIDTH, 
+                                                    NAZIMUTH, NLATITUDE, NLONGITUDE, HO_ATTEMPT,IS_TARGET_EXCLUDED
+                                                   )
+   select /* FULL(LC4C)  FULL(NPLSC)  FULL(PLRK)  FULL(PLSR)  */
+     LC4C.EXECUTIONGUID, LC4C.EXECUTIONSTARTTIMESTAMP,PLRK.SNAPSHOTID,
+     LC4C.CLID, LC4C.CM5 AS SITENAME, LC4C.BASESTATIONID AS BSID, LC4C.OBJECTKEY1 AS CELLID, LC4C.OBJECTNAME AS CELLID, LC4C.CM6 AS SECTORID, 
+     LC4C.ARFCN, LC4C.BEAMWIDTH, LC4C.AZIMUTH, LC4C.LATITUDE, LC4C.LONGITUDE,
+     NPLSC.CLID AS NCLID, NPLSC.CM5 AS NSITENAME, NPLSC.BASESTATIONID AS NBSID, NPLSC.OBJECTKEY1 AS NCELLID, NPLSC.OBJECTNAME AS NCELL ,NPLSC.CM6 AS NSECTORID, 
+     NPLSC.ARFCN AS NARFCN, NPLSC.BEAMWIDTH AS NBEAMWIDTH, NPLSC.AZIMUTH AS NAZIMUTH, NPLSC.LATITUDE AS NLATITUDE,NPLSC.LONGITUDE AS NLONGITUDE,
+     PLRK.KPI1 HO_ATTEMPT,
+     CASE WHEN NPLSC.ISTARGET = 0 OR NPLSC.ISEXCLUDED = 1 THEN 1 ELSE 0 END AS IS_TARGET_EXCLUDED
+      FROM  PISON_LITESON_SNAPSHOT_CELL LC4C 
+                    INNER JOIN  PISON_LITESON_SNAPSHOT_REL PLSR
+                        ON      PLSR.CELLID=LC4C.OBJECTKEY1 
+                            AND PLSR.EXECUTIONGUID=LC4C.EXECUTIONGUID 
+                            AND PLSR.EXECUTIONSTARTTIMESTAMP=LC4C.EXECUTIONSTARTTIMESTAMP 
+                            AND PLSR.CM1='1' --CM1:ACTIVE
+                    INNER JOIN PISON_LITESON_SNAPSHOT_CELL NPLSC 
+                        ON      NPLSC.EXECUTIONGUID=PLSR.EXECUTIONGUID
+                            AND NPLSC.EXECUTIONSTARTTIMESTAMP=PLSR.EXECUTIONSTARTTIMESTAMP
+                            AND NPLSC.OBJECTKEY1=PLSR.NCELLID  
+                     JOIN PISON_LITESON_REL_KPIS PLRK
+                        ON      PLRK.EXECUTIONGUID=PLSR.EXECUTIONGUID
+                            AND PLRK.EXECUTIONSTARTTIMESTAMP =PLSR.EXECUTIONSTARTTIMESTAMP 
+                            AND PLRK.CELLID=PLSR.CELLID
+                            AND PLRK.NCELLID=PLSR.NCELLID  
+                   WHERE 
+                         LC4C.EXECUTIONGUID = V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID
+                     AND LC4C.EXECUTIONSTARTTIMESTAMP = V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP;
+
+   COMMIT;
+ END; 
+
+ PROCEDURE FILL_CELL_ALL_KPIS
+ IS
+ v_sqlRowCount number;
+ BEGIN 
+
+    INSERT INTO LS_CCO_MT_CELL_ALL_KPIS 
+    (EXECUTIONSTARTTIMESTAMP, EXECUTIONGUID, SNAPSHOTID, ISTARGET, CLID, PROFILEID, BASESTATIONID, BASESTATIONNAME, CELLID, CELL, ARFCN, LATITUDE, LONGITUDE, AZIMUTH, 
+     BEAMWIDTH, MINCPICHPOWER, MAXCPICHPOWER, CPICHPOWER, SITENAME, SECTORID, BAND, MNC, VENDORNAME, VENDORID, 
+     /* 4G KPI */ CRITICAL_BAD_COVERAGE, BORDER_TRAFFIC,COVERAGEHOATTEMPTPERRAB, NUMBER_OF_COVBASEDHOACT,PRB_UTILIZATION, CA_DATA_VOLUME,
+     /* 3G KPI */ SHO_OVERHEAD,IRAT_ATTEMPT,IRAT_ACTIVITY_PER_CALL ,POWER_UTILIZATION,CODE_UTILIZATION,TOTAL_FAIL,
+     /* GENERAL*/ CELL_AVAILABILITY, DROP_RATE_VOICE,NUMBER_OF_DROPS_VOICE,DROP_RATE_DATA,NUMBER_OF_DROPS_DATA,RAB_ATTEMPT,VOICE_TRAFFIC,DATA_VOLUME
+    ) 
+WITH V_IRAT_ATTEMPT AS ( SELECT SNAPSHOTID, CELLID, SUM(HO_ATTEMPT) AS IRAT_ATTEMPT  FROM LS_CCO_MT_TEMP_REL WHERE   CLID<>NCLID  GROUP BY SNAPSHOTID, CELLID)
+    SELECT /*+ ORDERED FULL(LC4OS) FULL(ARFCN_MAP) FULL(PLSC) FULL(PLC4CK) USE_HASH(PLSC PLC4CK)  */ 
+                PLSC.EXECUTIONSTARTTIMESTAMP,
+                PLSC.EXECUTIONGUID,
+                PLC4CK.SNAPSHOTID, 
+                PLSC.ISTARGET, 
+                PLSC.CLID,
+                PLSC.PROFILEID,
+                PLSC.BASESTATIONID ,
+                PLSC.BASESTATIONNAME ,
+                PLSC.OBJECTKEY1 CELLID, 
+                PLSC.OBJECTNAME CELL, 
+                PLSC.ARFCN,
+                PLSC.LATITUDE,
+                PLSC.LONGITUDE,
+                PLSC.AZIMUTH,
+                GREATEST(PLSC.BEAMWIDTH,v_MinExpectedBeamwidth) AS BEAMWIDTH ,
+               /* PLSC.CM1 AS ETILT,
+                PLSC.CM2 AS MINTILT,
+                PLSC.CM3 AS MAXTILT,
+                */ 
+                NULL AS MINCPICHPOWER,
+                NULL AS MAXCPICHPOWER, 
+                PLSC.CM4 AS CPICHPOWER,
+                PLSC.CM5 AS SITENAME,
+                PLSC.CM6 AS SECTORID,
+                PLSC.CM7 AS BAND,  
+                PLSC.CM8 AS MNC,   
+                PLSC.VENDORNAME,
+                PLSC.VENDORID, 
+                /****** 4G *******************/ 
+                100*PLC4CK.KPI7  AS CRITICAL_BAD_COVERAGE,
+                100*PLC4CK.KPI8  AS BORDER_TRAFFIC,
+                100*PLC4CK.KPI9  AS COVERAGEHOATTEMPTPERRAB,  
+                PLC4CK.KPI12     AS NUMBER_OF_COVBASEDHOACT,
+                100*PLC4CK.KPI13 AS PRB_UTILIZATION, 
+                PLC4CK.KPI16     AS CA_DATA_VOLUME,  
+                /********* 3G *********/
+                100*PLC4CK.KPI2  AS SHO_OVERHEAD,
+                 V_IRAT_ATTEMPT.IRAT_ATTEMPT,
+                100*DECODE(V_IRAT_ATTEMPT.IRAT_ATTEMPT,0,NULL,V_IRAT_ATTEMPT.IRAT_ATTEMPT/PLC4CK.KPI3) AS  IRAT_ACTIVITY_PER_CALL,   
+                PLC4CK.KPI14 AS POWER_UTILIZATION,  
+                PLC4CK.KPI15 AS CODE_UTILIZATION,  
+                PLC4CK.KPI18 AS TOTAL_FAIL,  --CAPACITY_FAILURES
+                 /********* GENERAL *********/
+               100*PLC4CK.KPI1 AS CellAvailability,     -- 2G,3G,4G
+               PLC4CK.KPI4     AS DROP_RATE_VOICE ,     -- 2G,3G
+               PLC4CK.KPI5     AS NUMBER_OF_DROPS_VOICE,-- 2G,3G,
+               PLC4CK.KPI10    AS DROP_RATE_DATA ,      -- 3G,4G
+               PLC4CK.KPI11    AS NUMBER_OF_DROPS_DATA, -- 3G,4G
+               CASE PLSC.CLID WHEN 322 THEN PLC4CK.KPI6 /* ERAB_ATTEMPT */ WHEN 321 THEN PLC4CK.KPI3 /* CS_RAB_ATTEMPT */ END AS RAB_ATTEMPT,
+               PLC4CK.KPI17 AS VOICE_TRAFFIC, -- 2G,3G
+               PLC4CK.KPI19 AS DATA_VOLUME  --
+            FROM   PISON_LITESON_SNAPSHOT_CELL PLSC  
+               JOIN PISON_LITESON_CELL_KPIS PLC4CK 
+                    ON     PLSC.EXECUTIONSTARTTIMESTAMP=PLC4CK.EXECUTIONSTARTTIMESTAMP
+                       AND PLSC.EXECUTIONGUID=PLC4CK.EXECUTIONGUID 
+                       AND PLSC.OBJECTKEY1=PLC4CK.OBJECTKEY1  
+             LEFT JOIN V_IRAT_ATTEMPT   ON V_IRAT_ATTEMPT.CELLID=PLC4CK.OBJECTKEY1 AND V_IRAT_ATTEMPT.SNAPSHOTID=PLC4CK.SNAPSHOTID
+            WHERE 
+                  PLSC.ISEXCLUDED=0  
+              AND PLSC.ISOMNI=0  
+              AND PLSC.EXECUTIONGUID = V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID
+              AND PLSC.EXECUTIONSTARTTIMESTAMP = V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP;  
+
+        COMMIT;
+     v_sqlRowCount := SQL%ROWCOUNT; 
+    LITESON_HELPERS.FILL_LOG_TABLE(V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID, V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP, null, 'Filled LS_CCO_3G_CELL', v_sqlRowCount);
+
+    IF v_sqlRowCount = 0 THEN
+       LITESON_HELPERS.FILL_LOG_TABLE(V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID, V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP,null, 'No new canditate cell found for operation.');
+    END IF; 
+
+    MERGE INTO LS_CCO_MT_CELL_ALL_KPIS T
+         USING 
+         (
+          SELECT CELLID,
+            MAX(ar.ETILT) AS ETILT,
+            MAX(ar.MINTILT) AS MINTILT,
+            MAX(ar.MAXTILT) AS MAXTILT ,
+            LISTAGG(ar.MONAME, '|') WITHIN GROUP (ORDER BY AR.RETID) AS MONAME_AGG
+          FROM ALL_cELLS_RET acr join ALL_RETS ar on ar.RETID=acr.RETID
+          WHERE acr.ACTIVE=1 and ar.ACTIVE=1
+          group by acr.CELLID 
+         ) map
+         on (t.CELLID=map.CELLID)
+        WHEN MATCHED THEN UPDATE SET 
+        --T.RETMONAME=map.MONAME_AGG,
+        T.ETILT=map.ETILT,
+        T.MINTILT=map.MINTILT,
+        T.MAXTILT=map.MAXTILT;
+
+        commit;
+
+ END;
+
+  PROCEDURE FILL_CELL_ALL_ACTIONS
+ IS
+ BEGIN
+
+  INSERT /*+ APPEND */ INTO   LS_CCO_MT_CELL 
+                        (EXECUTIONSTARTTIMESTAMP,EXECUTIONGUID,SNAPSHOTID,ISTARGET,TECH_TYPE,CLID,PROFILEID,BSID,BASESTATION,CELLID,CELL,ARFCN_CATEGORY,ARFCN,
+                        LATITUDE,LONGITUDE,AZIMUTH,BEAMWIDTH,
+                        ETILT,MINTILT,MAXTILT,
+                       MINCPICHPOWER,MAXCPICHPOWER,
+                       CPICHPOWER,SITENAME,SECTORID,BAND,MNC,VENDOR,VENDORID,
+                       /* 4G KPI */ CRITICAL_BAD_COVERAGE, BORDER_TRAFFIC,COVERAGEHOATTEMPTPERRAB, NUMBER_OF_COVBASEDHOACT,PRB_UTILIZATION, CA_DATA_VOLUME,
+                       /* 3G KPI */ SHO_OVERHEAD,IRAT_ATTEMPT,IRAT_ACTIVITY_PER_CALL ,POWER_UTILIZATION,CODE_UTILIZATION,TOTAL_FAIL,
+                       /* GENERAL*/ CELL_AVAILABILITY, DROP_RATE_VOICE,NUMBER_OF_DROPS_VOICE,DROP_RATE_DATA,NUMBER_OF_DROPS_DATA,RAB_ATTEMPT,VOICE_TRAFFIC,DATA_VOLUME
+                        ) 
+    SELECT /*+ ORDERED FULL(LC4OS) FULL(ARFCN_MAP) FULL(CELLS)    */ 
+                 CELLS.EXECUTIONSTARTTIMESTAMP,
+                 CELLS.EXECUTIONGUID,
+                 SNAPSHOTID,
+                 ISTARGET,
+                 TECH_TYPE,
+                 CELLS.CLID,
+                 ARFCN_MAP.PROFILEID,
+                 BASESTATIONID ,
+                 BASESTATIONNAME ,
+                 CELLID, 
+                 CELL,
+                 ARFCN_MAP.ARFCN_CATEGORY,
+                 ARFCN_MAP.ARFCN,
+                 LATITUDE,
+                 LONGITUDE,
+                 AZIMUTH,
+                 BEAMWIDTH, 
+                 ETILT,
+                 MINTILT,
+                 MAXTILT, 
+                 MINCPICHPOWER,
+                 MAXCPICHPOWER, 
+                 CPICHPOWER,
+                 SITENAME,
+                 SECTORID,
+                 BAND,  
+                 MNC,   
+                 VENDORNAME,
+                 VENDORID, 
+                /****** 4G *******************/ 
+                CRITICAL_BAD_COVERAGE,
+                BORDER_TRAFFIC,
+                COVERAGEHOATTEMPTPERRAB,  
+                NUMBER_OF_COVBASEDHOACT,
+                PRB_UTILIZATION, 
+                CA_DATA_VOLUME,  
+                /********* 3G *********/
+                SHO_OVERHEAD,
+                IRAT_ATTEMPT,
+                IRAT_ACTIVITY_PER_CALL,   
+                POWER_UTILIZATION,  
+                CODE_UTILIZATION,  
+                TOTAL_FAIL,  --CAPACITY_FAILURES
+                 /********* GENERAL *********/
+               CELL_AVAILABILITY,     -- 2G,3G,4G
+               DROP_RATE_VOICE ,     -- 2G,3G
+               NUMBER_OF_DROPS_VOICE,-- 2G,3G,
+               DROP_RATE_DATA ,      -- 3G,4G
+               NUMBER_OF_DROPS_DATA, -- 3G,4G
+               RAB_ATTEMPT,
+               VOICE_TRAFFIC, -- 2G,3G
+               DATA_VOLUME  --
+            FROM LS_CCO_MT_CELL_ALL_KPIS CELLS 
+                  JOIN LS_CCO_MT_ARFCN_CATAGORIES ARFCN_MAP 
+                    ON      ARFCN_MAP.EXECUTIONGUID=CELLS.EXECUTIONGUID
+                       AND  ARFCN_MAP.EXECUTIONSTARTTIMESTAMP=CELLS.EXECUTIONSTARTTIMESTAMP
+                       AND  ARFCN_MAP.PROFILEID=CELLS.PROFILEID 
+                       AND  ARFCN_MAP.ARFCN=CELLS.ARFCN 
+                 JOIN LS_CCO_MT_GENERAL_SETTINGS LC4OS
+                      ON    CELLS.EXECUTIONGUID=LC4OS.EXECUTIONGUID
+                       AND  CELLS.EXECUTIONSTARTTIMESTAMP=LC4OS.EXECUTIONSTARTTIMESTAMP
+                       AND  CELLS.PROFILEID=LC4OS.PROFILEID 
+                       AND CELLS.CLID=LC4OS.CLID 
+              AND (LC4OS.OVERSHOOT_SWITCH='true' or LC4OS.UNDERSHOOTER_SWITCH='true')
+              AND LC4OS.CCO_ACTIVE='true'
+              AND  SNAPSHOTID='ActionPeriod'
+              AND  ISTARGET=1  
+              AND LC4OS.EXECUTIONGUID = V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID
+              AND LC4OS.EXECUTIONSTARTTIMESTAMP = V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP;  
+
+              COMMIT;
+
+ END;
+
+ PROCEDURE CALCULATE_TA_VALUES
+ IS
+ v_START_DATE date;
+ v_END_DATE date;
+ BEGIN
+
+        select MIN(ROP_STARTTIME) , MAX(ROP_ENDTIME) INTO  v_START_DATE, v_END_DATE
+        FROM LS_CCO_MT_GENERAL_SETTINGS T 
+        WHERE   T.EXECUTIONSTARTTIMESTAMP= V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP 
+            AND T.EXECUTIONGUID          = V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID;      
+
+ /***************************************************************************************************************/
+
+        INSERT INTO LS_CCO_TEMP_HISTOGRAMS (CELLID, TAPC90_DIST,HISTOGRAMSUM)
+             WITH  
+            TAPC90_DIST_TABLE AS
+            ( 
+             SELECT /*+ MATERIALIZE   full(s) full(h) */
+              S.CELLID, 
+              S.HISTOGRAMID, 
+               AGG_HISTSUM(HISTOGRAMDATA) AS HISTOGRAMSUM_RAW,
+              MEDIAN(MULTIPLIER) AS MULTIPLIER,
+              MAX(S.DATETIME) AS MAX_DATETIME
+             FROM  LS_CCO_MT_CELL PLSC
+              JOIN AGGREGATED_HISTOGRAMS S  ON  PLSC.CELLID = S.CELLID         
+              JOIN ALL_HISTOGRAMS H ON H.ID=S.HISTOGRAMID AND PLSC.VENDORID = H.VENDOR_ID 
+              WHERE S.HISTOGRAMID IN (6,68,71,6001,31,75,76,96,2007,6002,5001) -- 3G =  71: Nokia, 6: ERI, 68: Huaweii , 6001 ZTE  
+                                                                               -- 4G =  31: Ericsson, 75: ZTE, 76: Huawei, 96: Nokia 5001:ALU
+               AND S.DATETIME >=  v_START_DATE
+               AND S.DATETIME <   v_END_DATE
+               AND PLSC.EXECUTIONGUID           = V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID 
+               AND PLSC.EXECUTIONSTARTTIMESTAMP = V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP 
+             GROUP BY S.CELLID ,S.HISTOGRAMID
+            ),
+            RESULT1 AS 
+            (
+            SELECT CELLID, HISTOGRAMID, HISTOGRAMSUM_RAW, MULTIPLIER,MAX_DATETIME,
+                   AGGREGATOR.CALCPERCENTILE(HISTOGRAMSUM_RAW,90) AS TAPC90_DIST_PRE,
+                   AGGREGATOR.HistogramBinSumCount(HISTOGRAMSUM_RAW) AS HISTOGRAMSUM
+            FROM TAPC90_DIST_TABLE
+            ),
+           RESULT2 AS 
+           (
+            SELECT /*+ full(ah) */ CELLID,
+                     TO_NUMBER(REGEXP_SUBSTR(MAPPING, '[^;]+', 1, TAPC90_DIST_PRE)) / 1000
+                   * CASE WHEN  GENERATION='3G' AND VENDOR_ID = 1 /* ERI */  THEN  MULTIPLIER ELSE 1 END  
+                  AS TAPC90_DIST,
+                  HISTOGRAMSUM,
+                  ROW_NUMBER() OVER(PARTITION BY CELLID ORDER BY MAX_DATETIME DESC ) AS ROW_NUM 
+                FROM RESULT1  
+                 JOIN ALL_HISTOGRAMS AH on RESULT1.HISTOGRAMID = AH.ID AND AH.IS_ACTIVE = 1
+                WHERE TAPC90_DIST_PRE IS NOT NULL
+            ) 
+            SELECT CELLID, TAPC90_DIST,HISTOGRAMSUM FROM RESULT2 WHERE ROW_NUM = 1;
+
+    /***************************************************************************************************************/
+
+           MERGE /*+ ORDERED FULL(LC4C) */ 
+                INTO LS_CCO_MT_CELL LC4C 
+             USING LS_CCO_TEMP_HISTOGRAMS SRC 
+             ON      (    SRC.CELLID = LC4C.CELLID
+                      AND LC4C.EXECUTIONGUID           = V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID 
+                      AND LC4C.EXECUTIONSTARTTIMESTAMP = V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP 
+                     )
+            WHEN MATCHED THEN UPDATE SET 
+            LC4C.TAPC90_DIST  = SRC.TAPC90_DIST, 
+            LC4C.HISTOGRAMSUM = SRC.HISTOGRAMSUM;
+
+   COMMIT;
+  LITESON_HELPERS.FILL_LOG_TABLE(V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID,V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP,NULL, 'Finished to update TA data. Row count: '||SQL%ROWCOUNT);
+
+ END;
+
+
+ PROCEDURE FILL_RELATIONS
+ IS 
+ BEGIN
+
+   /* CALCDISTANCE_JAVA AND OTHER JAVA FUNCTIONS DOES NOT RUN AS PARALLEL EXECUTION THEN WE USED WITH CLAUSE TO MAKE SEPERATE QUERY FOR EACH LOGIC */
+
+            INSERT /*+ APPEND */ INTO    LS_CCO_MT_REL (EXECUTIONGUID,EXECUTIONSTARTTIMESTAMP,PROFILEID,TECH_TYPE,CLID,
+                                          SITENAME,BSID,SECTORID,CELLID,CELL,AZIMUTH,AZIMUTH_START,AZIMUTH_END,
+                                          NCLID,NSITENAME,NBSID,NSECTORID,NCELLID,NCELL,NAZIMUTH,
+                                          BEARING,DISTANCE,INTERSITE,MEDIAN_DISTANCE,SEES,SEES_OVERSHOOT,HO_ATTEMPT)
+            WITH LS_CCO_4G_REL_TEMP1 AS 
+            (
+                SELECT /*+ MATERIALIZE ORDERED PARALLEL FULL(LC4OS) FULL(LC4C) FULL(PLSR) FULL(NPLSC) FULL(PLRK)  */
+                    LC4C.PROFILEID,
+                    LC4OS.TECH_TYPE,
+                    LC4C.CLID,
+                    LC4C.BSID,
+                    LC4C.SECTORID,
+                    LC4C.CELLID,
+                    LC4C.CELL,
+                    LC4C.LONGITUDE,
+                    LC4C.LATITUDE,
+                    REL_MAP.NCLID,
+                    REL_MAP.NLATITUDE,
+                    REL_MAP.NLONGITUDE,
+                    REL_MAP.NBSID,
+                    REL_MAP.NSECTORID,
+                    REL_MAP.NCELLID,
+                    REL_MAP.NCELL,
+                    REL_MAP.SITENAME,
+                    REL_MAP.NSITENAME, 
+                     /* DECODE(LC4C.BSID,NPLSC.BASESTATIONID,0,1) INTERSITE,  PISON-9442 */
+                    ROUND(MOD(360+REL_MAP.AZIMUTH,360),2) AZIMUTH,
+                    ROUND(MOD(360+REL_MAP.NAZIMUTH,360),2) NAZIMUTH,
+                    ROUND(360+LC4C.BEAMWIDTH/2,2) HALF_BEAMWIDTH, 
+                    MOD(ROUND(360+(LC4C.AZIMUTH - LC4C.BEAMWIDTH*(1-LC4OS.OVERSHOOT_ALLOWED_PERC)/2),2),360) AZIMUTH_START_OVERSHOOT,
+                    MOD(ROUND(360+(LC4C.AZIMUTH - LC4C.BEAMWIDTH/2),2),360) AZIMUTH_START,
+                    MOD(ROUND(360+(LC4C.AZIMUTH + LC4C.BEAMWIDTH*(1-LC4OS.OVERSHOOT_ALLOWED_PERC)/2),2),360) AZIMUTH_END_OVERSHOOT,
+                    MOD(ROUND(360+(LC4C.AZIMUTH + LC4C.BEAMWIDTH/2),2),360) AZIMUTH_END,
+                    REL_MAP.HO_ATTEMPT
+                FROM   LS_CCO_MT_CELL LC4C 
+                    INNER JOIN  LS_CCO_MT_GENERAL_SETTINGS LC4OS 
+                        ON      LC4OS.EXECUTIONSTARTTIMESTAMP=LC4C.EXECUTIONSTARTTIMESTAMP
+                            AND LC4OS.EXECUTIONGUID=LC4C.EXECUTIONGUID 
+                            AND LC4OS.PROFILEID=LC4C.PROFILEID  
+                            AND LC4C.CLID=LC4OS.CLID --TODO:GOKHAN OMER 
+                    INNER JOIN LS_CCO_MT_TEMP_REL REL_MAP 
+                        ON REL_MAP.CELLID=LC4C.CELLID 
+                            AND REL_MAP.ARFCN=REL_MAP.NARFCN
+                            AND REL_MAP.CLID=LC4C.CLID  --TODO:GOKHAN OMER 
+                            AND LC4C.SNAPSHOTID=REL_MAP.SNAPSHOTID 
+              WHERE  LC4OS.EXECUTIONSTARTTIMESTAMP=V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP
+                 AND LC4OS.EXECUTIONGUID=V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID  
+                 AND REL_MAP.NBEAMWIDTH<>360 
+            ), 
+            LS_CCO_4G_REL_TEMP2 AS 
+            (
+                SELECT /*+ MATERIALIZE PARALLEL  */ 
+                LS_CCO_4G_REL_TEMP1.*,
+                 CALCDISTANCE_JAVA(LATITUDE, LONGITUDE, NLATITUDE, NLONGITUDE) DISTANCE, 
+                 MOD(ROUND(360+GEO$TO_DEGREE(BEARING_2POINTS(LATITUDE,LONGITUDE,NLATITUDE,NLONGITUDE)),2),360) BEARING
+                FROM LS_CCO_4G_REL_TEMP1
+            ) 
+            SELECT V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID,
+               V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP,
+               PROFILEID,
+               TECH_TYPE,
+               CLID,
+               SITENAME, 
+               BSID,
+               SECTORID,
+               CELLID,
+               CELL,
+               AZIMUTH,
+               AZIMUTH_START,
+               AZIMUTH_END,
+               NCLID,
+               NSITENAME, 
+               NBSID,
+               NSECTORID,
+               NCELLID,
+               NCELL,
+               NAZIMUTH,
+               BEARING,
+               DISTANCE,
+               CASE WHEN DISTANCE>0.01 THEN 1 ELSE 0 END INTERSITE, /* PISON-9442 */
+               MEDIAN(CASE WHEN DISTANCE>0 THEN DISTANCE ELSE NULL END) OVER (PARTITION BY CELL,CELLID) MEDIAN_DISTANCE,
+               CASE 
+                WHEN AZIMUTH_START < AZIMUTH_END AND BEARING BETWEEN AZIMUTH_START AND AZIMUTH_END THEN 1 
+                WHEN AZIMUTH_START > AZIMUTH_END AND (BEARING > AZIMUTH_START OR BEARING < AZIMUTH_END) THEN 1
+                ELSE 0 
+               END SEES,
+               CASE 
+                WHEN AZIMUTH_START_OVERSHOOT < AZIMUTH_END_OVERSHOOT AND BEARING BETWEEN AZIMUTH_START_OVERSHOOT AND AZIMUTH_END_OVERSHOOT THEN 1 
+                WHEN AZIMUTH_START_OVERSHOOT > AZIMUTH_END_OVERSHOOT AND (BEARING > AZIMUTH_START_OVERSHOOT OR BEARING < AZIMUTH_END_OVERSHOOT) THEN 1
+                ELSE 0 
+               END SEES_OVERSHOOT,
+               HO_ATTEMPT
+            FROM LS_CCO_4G_REL_TEMP2; 
+
+   COMMIT;
+
+      LITESON_HELPERS.FILL_LOG_TABLE(V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID, V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP,NULL, 
+                            'Finished to fill relation table. Row count: '|| SQL%ROWCOUNT);
+
+ END;
+
+
+ PROCEDURE UPDATE_RELATION_BASED_KPIS
+ IS
+
+ BEGIN
+  /*********************** UPDATE ERAB AND RAB VALUES FROM RELATION BASED TO CELL BASED  FOR BOTH 3G, 4G **************************************/
+
+ MERGE INTO LS_CCO_MT_CELL LC4C 
+            USING (
+                SELECT CELLID,ROUND(AVG(RAB_ATTEMPT),1) EBEST3NONCOSITE_RAB_ATTEMPT, COUNT(*) FROM
+                (
+                    SELECT LC4R.CELLID,LC4R.NCELLID,HO_ATTEMPT,LC4C.RAB_ATTEMPT,/*LC4C.PROFILEID,*/
+                    ROW_NUMBER() OVER (PARTITION BY LC4C.CELLID ORDER BY  HO_ATTEMPT DESC, DISTANCE ASC,RAB_ATTEMPT ASC NULLS LAST) RNK 
+                    FROM LS_CCO_MT_REL LC4R 
+                    INNER JOIN LS_CCO_MT_CELL LC4C 
+                        ON      LC4R.EXECUTIONGUID=LC4C.EXECUTIONGUID
+                            AND LC4R.EXECUTIONSTARTTIMESTAMP=LC4C.EXECUTIONSTARTTIMESTAMP
+                            AND LC4C.CELLID=LC4R.NCELLID
+                   WHERE        LC4R.EXECUTIONGUID = V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID
+                            AND LC4R.EXECUTIONSTARTTIMESTAMP=V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP 
+                            AND INTERSITE=1
+                            AND HO_ATTEMPT IS NOT NULL
+                ) T1 
+                WHERE RNK<=3
+                GROUP BY CELLID
+            ) SRC  
+         ON (LC4C.CELLID=SRC.CELLID AND LC4C.EXECUTIONGUID=V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID AND LC4C.EXECUTIONSTARTTIMESTAMP=V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP)
+          WHEN MATCHED THEN UPDATE SET 
+         LC4C.BEST3NONCOSITE_RAB_ATTEMPT=SRC.EBEST3NONCOSITE_RAB_ATTEMPT ;
+
+         commit;
+
+    LITESON_HELPERS.FILL_LOG_TABLE(V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID, V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP,NULL,
+                    'Updated LS_CCO_MT_CELL: BEST3NONCOSITE_RAB_ATTEMPT. Row count: '|| SQL%ROWCOUNT);
+
+    MERGE INTO LS_CCO_MT_CELL LC4C USING 
+    (
+        SELECT /*+ FULL(LC3R) */
+            LC3R.CELLID,
+            COUNT(*) ACT_NBRCNT,
+            MEDIAN(LC3R.DISTANCE) ACT_NBR_DIST_MEDIAN
+        FROM LS_CCO_MT_REL LC3R
+        WHERE LC3R.EXECUTIONGUID=V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID
+          AND LC3R.EXECUTIONSTARTTIMESTAMP=V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP
+          AND HO_ATTEMPT>10
+          AND INTERSITE=1 
+        GROUP BY CELLID
+    ) SRC ON (SRC.CELLID=LC4C.CELLID AND LC4C.EXECUTIONGUID=V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID AND LC4C.EXECUTIONSTARTTIMESTAMP=V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP)
+    WHEN MATCHED THEN UPDATE SET 
+        LC4C.ACT_NBRCNT=SRC.ACT_NBRCNT, 
+        LC4C.ACT_NBR_DIST_MEDIAN=SRC.ACT_NBR_DIST_MEDIAN;
+
+        COMMIT;
+
+    LITESON_HELPERS.FILL_LOG_TABLE(V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID, V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP, null, 
+    'Updated LS_CCO_MT_CELL: ACT_NBRCNT,ACT_NBR_DIST_MEDIAN data', SQL%ROWCOUNT);
+
+ END;
+
+ PROCEDURE FILL_GAP_OVERSHOOT_REPORT
+ IS
+ v_count number;
+ BEGIN
+
+ INSERT /*+ APPEND */ INTO LS_CCO_MT_ALL_REPORT 
+      (  EXECUTIONGUID,  EXECUTIONSTARTTIMESTAMP,CLID,  PROCESS_TYPE, CELLID,   CELL,  NCELLID,  NCELL, HO_ATTEMPT, INTERSITE,   DISTANCE, TAPC90_DIST, ACT_NBR_DIST_MEDIAN,
+         ACT_NBRCNT, INSIDE_ARC, INSIDE_ARC2, NEAREST_SITE_DISTANCE, NEAREST_SITE_RANK, PC90_NBRDIST_COUNTER, PC90_NBRCNT_COUNTER, PC90, SITE_COUNT_INSIDE_ARC, 
+         SITE_COUNT_INSIDE_ARC2, PC90_NBRDIST_MEDIAN, AVG_DIST_BEST2SITE,BEST2BASESTATION_DIST,SITE_COUNT_INSIDE_PROTECT_DIST
+      )
+   WITH V_DATA_1 AS 
+    (
+        SELECT /*+ MATERIALIZE FULL(PLSC */
+            LC4C.CLID,
+            LC4R.CELLID,
+            LC4R.CELL,
+            LC4R.NCELLID,
+            LC4R.NCELL,
+            LC4R.HO_ATTEMPT,
+            LC4R.INTERSITE,
+            LC4R.DISTANCE,
+            LC4C.TAPC90_DIST, 
+            LC4OS.COVERAGE_PROTECTION_MULTIPLIER,
+            SEES,  
+            SEES_OVERSHOOT,
+         CASE WHEN HO_ATTEMPT>10 AND INTERSITE=1 THEN MEDIAN(DISTANCE) OVER (PARTITION BY LC4C.CELLID,CASE WHEN HO_ATTEMPT>10 AND INTERSITE=1 THEN 1 ELSE 0 END) ELSE NULL END AS ACT_NBR_DIST_MEDIAN,
+         COUNT(CASE WHEN HO_ATTEMPT>10 AND INTERSITE=1 THEN HO_ATTEMPT ELSE 0 END) OVER (PARTITION BY LC4C.CELLID,CASE WHEN HO_ATTEMPT>10 AND INTERSITE=1 THEN 1 ELSE 0 END) AS ACT_NBRCNT,
+         CASE WHEN INTERSITE=1 AND /*PISON-9372 */ DISTANCE < TAPC90_DIST*(1-LC4OS.OVERSHOOT_ALLOWED_PERC) AND SEES_OVERSHOOT=1 THEN 1 ELSE 0 END AS INSIDE_ARC_O,
+         CASE WHEN LC4R.INTERSITE=1 AND LC4R.DISTANCE < TAPC90_DIST AND SEES=1 THEN 1 ELSE 0 END  AS INSIDE_ARC_G,
+         CASE WHEN LC4R.DISTANCE < LEAST(LC4C.ACT_NBR_DIST_MEDIAN,LC4C.TAPC90_DIST) * LC4OS.COVERAGE_PROTECTION_MULTIPLIER AND SEES=1 THEN 1 ELSE 0 END AS INSIDE_ARC2_G,
+         CASE WHEN LC4R.INTERSITE=1 AND /*PISON-9372 */ SEES = 1 THEN CASE WHEN DENSE_RANK () OVER (PARTITION BY LC4R.CELLID,SEES ORDER BY LC4R.DISTANCE ASC) <= 2 THEN LC4R.DISTANCE ELSE NULL END ELSE NULL END BEST2BASESTATION_DIST_G,
+         CASE WHEN LC4R.INTERSITE=1 AND /*PISON-9372 */ LC4R.SEES_OVERSHOOT = 1 THEN CASE WHEN DENSE_RANK () OVER (PARTITION BY LC4R.CELLID,LC4R.SEES_OVERSHOOT ORDER BY LC4R.DISTANCE ASC) <= 2 THEN LC4R.DISTANCE ELSE NULL END ELSE NULL END BEST2BASESTATION_DIST_O,
+         CASE WHEN DISTANCE < v_MaximumInsideArcDistance AND SEES_OVERSHOOT=1 THEN 1 ELSE 0 END  AS INSIDE_ARC2_O,
+         CASE WHEN SEES_OVERSHOOT = 1 AND INTERSITE=1 THEN MIN(DISTANCE) OVER (PARTITION BY LC4R.CELLID,CASE WHEN SEES_OVERSHOOT = 1 AND INTERSITE=1 THEN 1 ELSE 0 END) ELSE NULL END AS NEAREST_SITE_DISTANCE_O,
+         CASE WHEN SEES = 1 AND LC4R.INTERSITE=1 THEN MIN(LC4R.DISTANCE) OVER (PARTITION BY LC4R.CELLID,CASE WHEN SEES = 1 AND LC4R.INTERSITE=1 THEN 1 ELSE 0 END) ELSE NULL END  AS NEAREST_SITE_DISTANCE_G,
+         CASE WHEN SEES = 1 AND LC4R.INTERSITE=1 THEN RANK() OVER (PARTITION BY LC4R.CELLID,NBSID,CASE WHEN SEES = 1 AND LC4R.INTERSITE=1 THEN 1 ELSE 0 END ORDER BY LC4R.DISTANCE ASC) ELSE NULL END AS NEAREST_SITE_RANK,
+         CASE WHEN LC4R.INTERSITE=1 AND ROUND(DECODE((SUM(HO_ATTEMPT) OVER( PARTITION BY LC4R.CELLID,LC4R.INTERSITE ORDER BY LC4R.CELL DESC)),0,NULL,100*SUM(HO_ATTEMPT) OVER( PARTITION BY LC4R.CELL ORDER BY LC4R.CELLID,HO_ATTEMPT DESC ROWS UNBOUNDED PRECEDING ) /(SUM(HO_ATTEMPT) OVER( PARTITION BY LC4R.CELL ORDER BY LC4R.CELL DESC ))),2)<90 THEN LC4R.DISTANCE END PC90_NBRDIST_COUNTER,
+         CASE WHEN LC4R.INTERSITE=1 AND ROUND(DECODE((SUM(HO_ATTEMPT) OVER( PARTITION BY LC4R.CELLID,LC4R.INTERSITE ORDER BY LC4R.CELL DESC)),0,NULL,100*SUM(HO_ATTEMPT) OVER( PARTITION BY LC4R.CELL ORDER BY LC4R.CELLID,HO_ATTEMPT DESC ROWS UNBOUNDED PRECEDING ) /(SUM(HO_ATTEMPT) OVER( PARTITION BY LC4R.CELL ORDER BY LC4R.CELL DESC ))),2)<90 THEN 1 ELSE 0 END PC90_NBRCNT_COUNTER,
+         ROUND(DECODE((SUM(HO_ATTEMPT) OVER( PARTITION BY LC4R.CELL ORDER BY LC4R.CELL DESC )),0,NULL,100*SUM(HO_ATTEMPT) OVER( PARTITION BY LC4R.CELL ORDER BY LC4R.CELLID,HO_ATTEMPT DESC ROWS UNBOUNDED PRECEDING ) /(SUM(HO_ATTEMPT) OVER( PARTITION BY LC4R.CELL ORDER BY LC4R.CELL DESC ))),2) PC90, 
+         COUNT(DISTINCT CASE WHEN INTERSITE=1 AND SEES_OVERSHOOT=1 AND  TAPC90_DIST*(1-LC4OS.OVERSHOOT_ALLOWED_PERC)>DISTANCE THEN NBSID ELSE NULL END) OVER (PARTITION BY LC4C.CELL)  AS  SITE_COUNT_INSIDE_ARC_O,
+         CASE LC4OS.TECH_TYPE 
+             WHEN '3G' THEN  
+               COUNT(DISTINCT CASE WHEN LC4R.INTERSITE=1 AND LC4R.SEES=1 AND TAPC90_DIST>LC4R.DISTANCE THEN NBSID ELSE NULL END) OVER (PARTITION BY LC4R.CELL)
+             WHEN '4G' THEN 
+               COUNT(DISTINCT CASE WHEN LC4R.INTERSITE=1 AND LC4R.SEES=1 AND v_TA90ExtensionForGapDetection*TAPC90_DIST>LC4R.DISTANCE THEN NBSID ELSE NULL END) OVER (PARTITION BY LC4C.CELL)
+         END AS SITE_COUNT_INSIDE_ARC_G,  
+         COUNT(DISTINCT CASE WHEN SEES_OVERSHOOT=1 AND DISTANCE< v_MaximumInsideArcDistance THEN NBSID ELSE NULL END) OVER (PARTITION BY LC4C.CELL) AS SITE_COUNT_INSIDE_ARC2,
+         COUNT(DISTINCT CASE WHEN LC4R.BSID <> LC4R.NBSID  AND LC4R.SEES=1 AND LC4R.DISTANCE < LEAST(LC4C.ACT_NBR_DIST_MEDIAN,LC4C.TAPC90_DIST) * LC4OS.COVERAGE_PROTECTION_MULTIPLIER THEN NBSID ELSE NULL END) OVER (PARTITION BY LC4R.CELL) AS SITE_COUNT_INSIDE_PROTECT_DIST --TODO
+        FROM LS_CCO_MT_CELL LC4C  
+            INNER JOIN LS_CCO_MT_GENERAL_SETTINGS LC4OS
+                ON      LC4C.EXECUTIONGUID=LC4OS.EXECUTIONGUID
+                    AND LC4C.EXECUTIONSTARTTIMESTAMP=LC4OS.EXECUTIONSTARTTIMESTAMP 
+                    AND LC4C.PROFILEID=LC4OS.PROFILEID 
+                    AND LC4C.CLID=LC4OS.CLID 
+            INNER JOIN  LS_CCO_MT_REL LC4R
+                ON      LC4R.EXECUTIONGUID=LC4C.EXECUTIONGUID
+                    AND LC4R.EXECUTIONSTARTTIMESTAMP=LC4C.EXECUTIONSTARTTIMESTAMP
+                    AND LC4R.CELLID=LC4C.CELLID 
+                    AND LC4R.CLID=LC4C.CLID  -- TODO:GOKHAN OMER
+         WHERE  LC4C.EXECUTIONGUID=V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID
+            AND LC4C.EXECUTIONSTARTTIMESTAMP=V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP
+     ),
+  V_DATA_2 
+    AS 
+    (
+    select /*+ materialze */
+         V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID,
+         V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP,
+         CLID,
+         CELLID,
+         CELL,
+         NCELLID,
+         NCELL,
+         HO_ATTEMPT,
+         INTERSITE,
+         DISTANCE,
+         TAPC90_DIST,    
+         ACT_NBR_DIST_MEDIAN,
+         ACT_NBRCNT,
+         INSIDE_ARC_O,
+         INSIDE_ARC_G,
+         INSIDE_ARC2_G,
+         INSIDE_ARC2_O,
+         NEAREST_SITE_DISTANCE_O,
+         NEAREST_SITE_DISTANCE_G,
+         NEAREST_SITE_RANK,
+         PC90_NBRDIST_COUNTER,
+         PC90_NBRCNT_COUNTER,
+         PC90, 
+         SITE_COUNT_INSIDE_ARC_O,
+         SITE_COUNT_INSIDE_ARC_G,
+         SITE_COUNT_INSIDE_ARC2, 
+         BEST2BASESTATION_DIST_O,
+         BEST2BASESTATION_DIST_G,
+         SITE_COUNT_INSIDE_PROTECT_DIST,
+         CASE WHEN PC90_NBRDIST_COUNTER IS NOT NULL THEN MEDIAN(PC90_NBRDIST_COUNTER) OVER (PARTITION BY CELLID) ELSE NULL END PC90_NBRDIST_MEDIAN,
+         CASE WHEN BEST2BASESTATION_DIST_O IS NOT NULL THEN AVG(BEST2BASESTATION_DIST_O) OVER (PARTITION BY CELLID) ELSE NULL END AVG_DIST_BEST2SITE_O,
+         CASE WHEN BEST2BASESTATION_DIST_G IS NOT NULL THEN AVG(BEST2BASESTATION_DIST_G) OVER (PARTITION BY CELLID) ELSE NULL END AVG_DIST_BEST2SITE_G
+       from V_DATA_1
+       ),
+   V_DATA_GAP   
+    AS 
+    (
+     SELECT  
+         EXECUTIONGUID,
+         EXECUTIONSTARTTIMESTAMP,
+         CLID,
+         'UNDERSHOOT' AS PROCESS_TYPE,
+         CELLID,
+         CELL,
+         NCELLID,
+         NCELL,
+         HO_ATTEMPT,
+         INTERSITE,
+         DISTANCE,
+         TAPC90_DIST,    
+         ACT_NBR_DIST_MEDIAN,
+         ACT_NBRCNT, 
+         INSIDE_ARC_G,
+         INSIDE_ARC2_G,  
+         NEAREST_SITE_DISTANCE_G,
+         NEAREST_SITE_RANK,
+         PC90_NBRDIST_COUNTER,
+         PC90_NBRCNT_COUNTER,
+         PC90, 
+         SITE_COUNT_INSIDE_ARC_G,
+         SITE_COUNT_INSIDE_ARC2, 
+         PC90_NBRDIST_MEDIAN,
+         AVG_DIST_BEST2SITE_G,
+         BEST2BASESTATION_DIST_G,
+         SITE_COUNT_INSIDE_PROTECT_DIST
+      FROM V_DATA_2
+      ),
+    V_OVERSOOT
+    AS 
+    (
+     select 
+         V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID,
+         V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP,
+         CLID,
+         'OVERSHOOT' AS PROCESS_TYPE,
+         CELLID,
+         CELL,
+         NCELLID,
+         NCELL,
+         HO_ATTEMPT,
+         INTERSITE,
+         DISTANCE,
+         TAPC90_DIST,    
+         ACT_NBR_DIST_MEDIAN,
+         ACT_NBRCNT,
+         INSIDE_ARC_O,
+         INSIDE_ARC2_G, 
+         NEAREST_SITE_DISTANCE_O, 
+         NEAREST_SITE_RANK,
+         PC90_NBRDIST_COUNTER,
+         PC90_NBRCNT_COUNTER, 
+         PC90,
+         SITE_COUNT_INSIDE_ARC_O, 
+         SITE_COUNT_INSIDE_ARC2, 
+         PC90_NBRDIST_MEDIAN,
+         AVG_DIST_BEST2SITE_O,
+         BEST2BASESTATION_DIST_O,
+         SITE_COUNT_INSIDE_PROTECT_DIST
+      FROM V_DATA_2
+    )
+   select * from  V_OVERSOOT
+   UNION ALL 
+   select * from V_DATA_GAP;
+
+     COMMIT;
+    LITESON_HELPERS.FILL_LOG_TABLE(V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID, V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP, null, 'Filled FILL_GAP_OVERSHOOT_REPORT', SQL%ROWCOUNT);
+
+      /***************************************************/
+
+       UPDATE LS_CCO_MT_ALL_REPORT LC4R
+            SET MEDIAN_BEST2SITE_DIFF = 
+                CASE 
+                    WHEN ACT_NBR_DIST_MEDIAN <= AVG_DIST_BEST2SITE THEN TAPC90_DIST-AVG_DIST_BEST2SITE
+                    WHEN ACT_NBR_DIST_MEDIAN > AVG_DIST_BEST2SITE THEN LEAST(ACT_NBR_DIST_MEDIAN,TAPC90_DIST)-AVG_DIST_BEST2SITE
+                    ELSE NULL
+                END,
+                ACTUAL_FOOTPRINT = LEAST(ACT_NBR_DIST_MEDIAN,TAPC90_DIST)
+            WHERE EXECUTIONGUID = V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID
+              AND EXECUTIONSTARTTIMESTAMP = V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP
+              AND PROCESS_TYPE='OVERSHOOT';
+
+        LITESON_HELPERS.FILL_LOG_TABLE(V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID, V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP, null, 'UPDATED MEDIAN_BEST2SITE_DIFF,ACTUAL_FOOTPRINT', SQL%ROWCOUNT);
+
+       COMMIT;   
+ END;
+
+ PROCEDURE UNDERSHOOT_CELL_PRE_ACTION
+ IS
+    StepSizeCG NUMBER:= 1;
+    MinimumIRATAttempt NUMBER := 100; 
+
+ BEGIN 
+
+  INSERT INTO LS_CCO_MT_CELL_PRE_ACTION ( EXECUTIONGUID, EXECUTIONSTARTTIMESTAMP,PROCESS_TYPE, TECH_TYPE, CLID, PROFILEID, PROFILE_NAME, BSID, BASESTATION, CELLID, CELL, ARFCN_CATEGORY,
+                                        ETILT, MINTILT, MAXTILT, MINCARRIERPOWER, MAXCARRIERPOWER, CPICHPOWER,ROPSTARTTIME, ROPENDTIME, DELTA_TILT_FINAL, DELTA_PWR_FINAL, 
+                                        TOTAL_COST, ETILT_SWITCH, CARRIERPOWER_SWITCH, TOLERATEDTRAFFIC, PRB_UTIL, ACT_NEI ,ISWEAKCOVERAGE
+    )  
+     WITH V_MAIN_GAP_RAW AS 
+          (
+          SELECT /*+ materialize  */ LC4OS.EXECUTIONGUID,  
+               LC4OS.EXECUTIONSTARTTIMESTAMP,
+               PROCESS_TYPE,
+               LC4OS.TECH_TYPE,
+               LC4OS.CLID,
+               LC4OS.PROFILEID,
+               LC4OS.PROFILE_NAME,
+               LC4C.BSID, 
+               LC4C.BASESTATION, 
+               LC4C.CELLID,
+               LC4C.CELL, 
+               LC4C.ARFCN_CATEGORY,
+               LC4R.TAPC90_DIST,
+               LC4R.AVG_DIST_BEST2SITE,
+               LC4R.ACT_NBR_DIST_MEDIAN, 
+               LC4R.PC90_NBRDIST_MEDIAN,
+               LC4R.PC90_NBRCNT_COUNTER,
+               LC4R.SITE_COUNT_INSIDE_ARC, 
+               LC4R.SITE_COUNT_INSIDE_PROTECT_DIST,
+               LC4OS.POWER_MIN_DELTA_VALUE, LC4OS.POWER_MAX_DELTA_VALUE,   /* UI BASED DEFINATIONS */
+               LC4OS.POWER_MIN_VALUE, LC4OS.POWER_MAX_VALUE,               /* UI BASED DEFINATIONS */
+               LC4C.CPICHPOWER, LC4C.MINCPICHPOWER, LC4C.MAXCPICHPOWER,   /* CELL BASED DEFINATIONS */
+               LC4OS.ETILT_MIN_DELTA_VALUE, LC4OS.ETILT_MAX_DELTA_VALUE,   /* UI BASED DEFINATIONS */
+               LC4OS.ETILT_MAX_VALUE, LC4OS.ETILT_MIN_VALUE,               /* UI BASED DEFINATIONS */
+               LC4C.ETILT, LC4C.MINTILT, LC4C.MAXTILT,                     /* CELL BASED DEFINATIONS */
+               LC4OS.ROP_STARTTIME,
+               LC4OS.ROP_ENDTIME, 
+               LC4OS.ETILT_SWITCH , 
+               LC4OS.CARRIERPOWER_SWITCH, 
+               ROUND((LC4C.BEST3NONCOSITE_RAB_ATTEMPT-LC4C.RAB_ATTEMPT)/decode(LC4C.BEST3NONCOSITE_RAB_ATTEMPT,0,1,LC4C.BEST3NONCOSITE_RAB_ATTEMPT),2) *100 AS ToleratedTraffic, 
+               LC4C.PRB_UTILIZATION,
+               LC4R.ACT_NBRCNT,
+               LC4R.NEAREST_SITE_DISTANCE,
+               LC4C.BEST3NONCOSITE_RAB_ATTEMPT, 
+               LC4C.RAB_ATTEMPT,
+               LC4OS.UNDERSHOOT_TOLERATED_ERAB_DIF, 
+               LC4OS.UNDERSHOOT_TOLERATED_TRAFF,
+               LC4C.VENDOR,LC4C.CRITICAL_BAD_COVERAGE ,
+               LC4OS.UNDERSHOOT_BORDER_TRAFFIC_RT, 
+               LC4C.COVERAGEHOATTEMPTPERRAB,
+               LC4OS.UNDERSHOOT_IRAT_PER_CALL,
+               LC4C.BORDER_TRAFFIC,
+               UNDERSHOOT_CRITICAL_BAD_COV,
+               LC4OS.UNDERSOOT_ALLOWED_PRB_UTIL,
+               LC4C.IRAT_ATTEMPT,
+               LC4C.IRAT_ACTIVITY_PER_CALL,
+               LC4OS.OVERSHOOT_SHO_OVERHEAD,
+               LC4C.SHO_OVERHEAD ,
+               HISTOGRAMSUM, 
+               UNDERSHOOT_MAX_ACTIVE_NE,
+               LC4C.ISWEAKCOVERAGE
+           FROM LS_CCO_MT_CELL LC4C   
+                INNER JOIN LS_CCO_MT_GENERAL_SETTINGS LC4OS
+                ON      LC4C.EXECUTIONGUID=LC4OS.EXECUTIONGUID
+                    AND LC4C.EXECUTIONSTARTTIMESTAMP=LC4OS.EXECUTIONSTARTTIMESTAMP 
+                    AND LC4C.PROFILEID=LC4OS.PROFILEID  
+                    AND LC4C.CLID=LC4OS.CLID                    
+                INNER JOIN LS_CCO_MT_ALL_REPORT LC4R     
+                ON      LC4R.EXECUTIONSTARTTIMESTAMP=LC4C.EXECUTIONSTARTTIMESTAMP
+                    AND LC4R.EXECUTIONGUID=LC4C.EXECUTIONGUID
+                    AND LC4R.CELLID=LC4C.CELLID 
+                WHERE   
+                        LC4OS.EXECUTIONSTARTTIMESTAMP = V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP
+                    AND LC4OS.EXECUTIONGUID = V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID 
+                    AND LC4OS.UNDERSHOOTER_SWITCH='true'
+                    AND LC4OS.CCO_ACTIVE ='true'
+                    AND LC4R.PROCESS_TYPE='UNDERSHOOT'
+            ),
+            V_MAIN_GAP_1 AS 
+              (
+               SELECT * FROM V_MAIN_GAP_RAW
+                WHERE ACT_NBRCNT < UNDERSHOOT_MAX_ACTIVE_NE
+                    AND HISTOGRAMSUM > 100
+                    AND SITE_COUNT_INSIDE_ARC <= 0 --SITE_COUNT_INSIDE_ARC
+                    AND NEAREST_SITE_DISTANCE IS NOT NULL 
+                    AND SITE_COUNT_INSIDE_PROTECT_DIST > 0 
+              ),
+            V_GAP_4G AS  
+              (
+                SELECT * 
+                    FROM  V_MAIN_GAP_1 
+                     WHERE ISWEAKCOVERAGE=0 AND CLID=322 AND PRB_UTILIZATION <= UNDERSOOT_ALLOWED_PRB_UTIL 
+                         AND  (100 * (DECODE(BEST3NONCOSITE_RAB_ATTEMPT,0,NULL,BEST3NONCOSITE_RAB_ATTEMPT-RAB_ATTEMPT)/BEST3NONCOSITE_RAB_ATTEMPT)) > UNDERSHOOT_TOLERATED_ERAB_DIF
+                         AND (CASE 
+                                WHEN VENDOR NOT IN ('ERI','HWI') THEN 1 
+                                WHEN VENDOR='ERI' AND CRITICAL_BAD_COVERAGE > UNDERSHOOT_CRITICAL_BAD_COV THEN 1
+                                WHEN VENDOR='HWI' AND ( BORDER_TRAFFIC > UNDERSHOOT_BORDER_TRAFFIC_RT OR COVERAGEHOATTEMPTPERRAB >UNDERSHOOT_IRAT_PER_CALL) THEN 1
+                                ELSE 0
+                            END)=1
+               ),
+             V_GAP_4G_BADCOV AS 
+              ( SELECT *  FROM  V_MAIN_GAP_1  WHERE CLID=322 AND ISWEAKCOVERAGE=1),
+             V_GAP_3G AS 
+              (
+                SELECT * 
+                    FROM  V_MAIN_GAP_1 
+                     WHERE CLID=321 AND SHO_Overhead < OVERSHOOT_SHO_OVERHEAD   
+                    AND ( (IRAT_ACTIVITY_PER_CALL > UNDERSHOOT_IRAT_PER_CALL AND IRAT_ATTEMPT > MinimumIRATAttempt) OR 
+                           DECODE(BEST3NONCOSITE_RAB_ATTEMPT,0,NULL,(BEST3NONCOSITE_RAB_ATTEMPT-RAB_ATTEMPT)/BEST3NONCOSITE_RAB_ATTEMPT) > UNDERSHOOT_TOLERATED_TRAFF
+                        )
+               ),
+             V_MERGE_TECHS AS
+               ( 
+                  SELECT * FROM V_GAP_3G 
+                  UNION ALL
+                  SELECT * FROM V_GAP_4G
+                  UNION ALL
+                  SELECT * FROM V_GAP_4G_BADCOV
+               ),
+             V_CALCULATE_DELTA AS
+               (  
+                SELECT  T.* , 
+                     NVL( 10*NORMALIZE(((NEAREST_SITE_DISTANCE -TAPC90_DIST )/(NEAREST_SITE_DISTANCE )),MIN((NEAREST_SITE_DISTANCE -TAPC90_DIST )/(NEAREST_SITE_DISTANCE )) 
+                                        OVER(PARTITION BY CLID),MAX((NEAREST_SITE_DISTANCE- TAPC90_DIST)/(NEAREST_SITE_DISTANCE )) OVER(/*PARTITION BY LC4OS.CLID*/ ), 1,10 ),0
+                        )   
+                   + NVL(NORMALIZE (PC90_NBRCNT_COUNTER ,MIN(PC90_NBRCNT_COUNTER ) OVER(/*PARTITION BY LC4OS.CLID*/),
+                                     MAX( PC90_NBRCNT_COUNTER) OVER( /*PARTITION BY LC4OS.CLID*/),1 ,10), 0 
+                        ) AS  TOTAL_GAP_COST,
+                      (NEAREST_SITE_DISTANCE-TAPC90_DIST)/NEAREST_SITE_DISTANCE AS  DELTA_NORM,
+                      ROUND( NVL(
+                            NORMALIZE((NEAREST_SITE_DISTANCE-TAPC90_DIST)/NEAREST_SITE_DISTANCE,
+                            MIN((NEAREST_SITE_DISTANCE-TAPC90_DIST)/NEAREST_SITE_DISTANCE) OVER(/*PARTITION BY LC4OS.CLID*/),
+                            MAX((NEAREST_SITE_DISTANCE-TAPC90_DIST)/NEAREST_SITE_DISTANCE) OVER(/*PARTITION BY LC4OS.CLID*/),ETILT_MIN_DELTA_VALUE,ETILT_MAX_DELTA_VALUE),
+                            ETILT_MIN_DELTA_VALUE
+                                ),0
+                           ) AS DELTA_TILT_NORM, 
+                    ROUND(NVL(
+                            NORMALIZE((NEAREST_SITE_DISTANCE-TAPC90_DIST)/NEAREST_SITE_DISTANCE,
+                            MIN((NEAREST_SITE_DISTANCE-TAPC90_DIST)/NEAREST_SITE_DISTANCE) OVER(/*PARTITION BY LC4OS.CLID*/),
+                            MAX((NEAREST_SITE_DISTANCE-TAPC90_DIST)/NEAREST_SITE_DISTANCE) OVER(/*PARTITION BY LC4OS.CLID*/),POWER_MIN_DELTA_VALUE,POWER_MAX_DELTA_VALUE),
+                        POWER_MIN_DELTA_VALUE
+                             ),0
+                         ) AS DELTA_PWR_NORM 
+                FROM V_MERGE_TECHS T
+               )
+                SELECT
+                     V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID, 
+                     V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP, 
+                     PROCESS_TYPE,
+                     TECH_TYPE, 
+                     CLID,
+                     PROFILEID,
+                     PROFILE_NAME,
+                     BSID,
+                     BASESTATION,
+                     CELLID,
+                     CELL, 
+                     ARFCN_CATEGORY,
+                     MIN(ETILT) ETILT, 
+                     MIN(GREATEST(NVL(MINTILT,ETILT_MIN_VALUE),ETILT_MIN_VALUE)) AS MINTILT,
+                     MIN(LEAST(NVL(MAXTILT,ETILT_MAX_VALUE),ETILT_MAX_VALUE))    AS MAXTILT,  
+                     MIN(GREATEST(NVL(MINCPICHPOWER,POWER_MIN_VALUE),POWER_MIN_VALUE)) AS MINCARRIERPOWER,
+                     MIN(LEAST(NVL(MAXCPICHPOWER,POWER_MAX_VALUE),POWER_MAX_VALUE))    AS  MAXCARRIERPOWER,
+                     MIN(CPICHPOWER) AS CPICHPOWER,  
+                     MIN(ROP_STARTTIME) AS ROPSTARTTIME,
+                     MIN(ROP_ENDTIME) AS ROPENDTIME,
+                     ROUND(MAX(CASE 
+                            WHEN DELTA_NORM>=0.85 AND DELTA_NORM<1.00 THEN LEAST(DELTA_TILT_NORM,GREATEST(60,ETILT_MIN_DELTA_VALUE))
+                            WHEN DELTA_NORM>=0.75 AND DELTA_NORM<0.85 THEN LEAST(DELTA_TILT_NORM,GREATEST(50,ETILT_MIN_DELTA_VALUE))
+                            WHEN DELTA_NORM>=0.65 AND DELTA_NORM<0.75 THEN LEAST(DELTA_TILT_NORM,GREATEST(40,ETILT_MIN_DELTA_VALUE))
+                            WHEN DELTA_NORM>=0.50 AND DELTA_NORM<0.65 THEN LEAST(DELTA_TILT_NORM,GREATEST(30,ETILT_MIN_DELTA_VALUE))
+                            WHEN DELTA_NORM>=0.30 AND DELTA_NORM<0.50 THEN LEAST(DELTA_TILT_NORM,GREATEST(20,ETILT_MIN_DELTA_VALUE))
+                            WHEN DELTA_NORM>=0    AND DELTA_NORM<0.30 THEN LEAST(DELTA_TILT_NORM,GREATEST(10,ETILT_MIN_DELTA_VALUE))
+                     END)/StepSizeCG)*StepSizeCG DELTA_TILT_FINAL,
+                     ROUND(MAX(CASE 
+                            WHEN DELTA_NORM>=0.85 AND DELTA_NORM<1.00 THEN LEAST(DELTA_PWR_NORM,GREATEST(30,POWER_MIN_DELTA_VALUE))
+                            WHEN DELTA_NORM>=0.75 AND DELTA_NORM<0.85 THEN LEAST(DELTA_PWR_NORM,GREATEST(25,POWER_MIN_DELTA_VALUE))
+                            WHEN DELTA_NORM>=0.65 AND DELTA_NORM<0.75 THEN LEAST(DELTA_PWR_NORM,GREATEST(20,POWER_MIN_DELTA_VALUE))
+                            WHEN DELTA_NORM>=0.50 AND DELTA_NORM<0.65 THEN LEAST(DELTA_PWR_NORM,GREATEST(15,POWER_MIN_DELTA_VALUE))
+                            WHEN DELTA_NORM>=0.30 AND DELTA_NORM<0.50 THEN LEAST(DELTA_PWR_NORM,GREATEST(10,POWER_MIN_DELTA_VALUE))
+                            WHEN DELTA_NORM>=0    AND DELTA_NORM<0.30 THEN LEAST(DELTA_PWR_NORM,GREATEST(05,POWER_MIN_DELTA_VALUE))
+                     END)/StepSizeCG)*StepSizeCG  AS DELTA_PWR_FINAL,
+                     MAX(TOTAL_GAP_COST) TOTAL_GAP_COST,
+                     MIN(ETILT_SWITCH) ETILT_SWITCH,
+                     MIN(CARRIERPOWER_SWITCH) CARRIERPOWER_SWITCH,
+                     MIN(ToleratedTraffic) AS ToleratedTraffic,
+                     MIN(PRB_UTILIZATION) AS PRB_UTIL,
+                     MIN(ACT_NBRCNT) AS ACT_NEI  ,
+                     ISWEAKCOVERAGE
+                  FROM V_CALCULATE_DELTA
+                GROUP BY PROFILE_NAME,PROFILEID,BSID,BASESTATION,CELL,ARFCN_CATEGORY,CELLID,CLID,TECH_TYPE,PROCESS_TYPE,ISWEAKCOVERAGE
+                ORDER BY TOTAL_GAP_COST DESC; 
+
+    COMMIT;
+
+            LITESON_HELPERS.FILL_LOG_TABLE(V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID, V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP, null, 'Executed UNDERSHOOT_CELL_PRE_ACTION ', SQL%ROWCOUNT);
+ END; 
+
+  PROCEDURE OVERSHOOT_CELL_PRE_ACTION
+ IS
+    StepSizeCG NUMBER:= 1;
+    MinimumIRATAttempt NUMBER := 100; 
+
+ BEGIN
+
+ INSERT INTO LS_CCO_MT_CELL_PRE_ACTION 
+        ( 
+        EXECUTIONGUID, EXECUTIONSTARTTIMESTAMP,PROCESS_TYPE, TECH_TYPE, CLID, PROFILEID, PROFILE_NAME, BSID, BASESTATION, CELLID, CELL,ARFCN_CATEGORY,  
+        ETILT, MINTILT, MAXTILT, MINCARRIERPOWER, MAXCARRIERPOWER, CPICHPOWER,
+        ROPSTARTTIME, ROPENDTIME, DELTA_TILT_FINAL, DELTA_PWR_FINAL, TOTAL_COST, ETILT_SWITCH, CARRIERPOWER_SWITCH, ACT_NEI
+        )
+  WITH V_DATA_OVERSHOOT_1 AS 
+    (  
+      SELECT /*+ MATERIALIZE ORDERED USE_HASH(LC4C LC4OS) USE_HASH(LC4OS LC4R)  */ 
+        NVL(10*NORMALIZE(MEDIAN_BEST2SITE_DIFF/decode(ACTUAL_FOOTPRINT,0,1,ACTUAL_FOOTPRINT),
+                         MIN(MEDIAN_BEST2SITE_DIFF/decode(ACTUAL_FOOTPRINT,0,1,ACTUAL_FOOTPRINT)) OVER(/*PARTITION BY LC4OS.CLID*/),
+                         MAX(MEDIAN_BEST2SITE_DIFF/decode(ACTUAL_FOOTPRINT,0,1,ACTUAL_FOOTPRINT)) OVER(/*PARTITION BY LC4OS.CLID*/),1,10
+                        ),0
+            )+
+             NVL(NORMALIZE(PC90_NBRCNT_COUNTER,MIN(PC90_NBRCNT_COUNTER) OVER(/*PARTITION BY LC4OS.CLID*/),
+             MAX(PC90_NBRCNT_COUNTER) OVER(/*PARTITION BY LC4OS.CLID*/ ORDER BY 1),1,10),0)+ 
+             NVL(NORMALIZE(SITE_COUNT_INSIDE_ARC,MIN(SITE_COUNT_INSIDE_ARC) OVER(/*PARTITION BY LC4OS.CLID*/),
+                           MAX(SITE_COUNT_INSIDE_ARC) OVER(/*PARTITION BY LC4OS.CLID*/),1,10
+                           ),0
+                )  AS TOTAL_OVERSHOOT_COST,
+             MEDIAN_BEST2SITE_DIFF/decode(ACTUAL_FOOTPRINT,0,1,ACTUAL_FOOTPRINT) DELTA_NORM, 
+             ROUND(NVL(NORMALIZE
+                          (MEDIAN_BEST2SITE_DIFF/decode(ACTUAL_FOOTPRINT,0,1,ACTUAL_FOOTPRINT),
+                             MIN(MEDIAN_BEST2SITE_DIFF/decode(ACTUAL_FOOTPRINT,0,1,ACTUAL_FOOTPRINT)) OVER(/*PARTITION BY LC4OS.CLID*/),
+                             MAX(MEDIAN_BEST2SITE_DIFF/decode(ACTUAL_FOOTPRINT,0,1,ACTUAL_FOOTPRINT)) OVER(/*PARTITION BY LC4OS.CLID*/),
+                             ETILT_MIN_DELTA_VALUE,ETILT_MAX_DELTA_VALUE
+                          ),
+                        ((LC4OS.ETILT_MIN_DELTA_VALUE+LC4OS.ETILT_MAX_DELTA_VALUE) / 2) 
+                    ),2
+            ) AS  DELTA_TILT_NORM,
+       ROUND(NVL(NORMALIZE(
+                            MEDIAN_BEST2SITE_DIFF/decode(ACTUAL_FOOTPRINT,0,1,ACTUAL_FOOTPRINT),
+                            MIN(MEDIAN_BEST2SITE_DIFF/decode(ACTUAL_FOOTPRINT,0,1,ACTUAL_FOOTPRINT)) OVER(/*PARTITION BY LC4OS.CLID*/),
+                            MAX(MEDIAN_BEST2SITE_DIFF/decode(ACTUAL_FOOTPRINT,0,1,ACTUAL_FOOTPRINT)) OVER(/*PARTITION BY LC4OS.CLID*/),POWER_MIN_DELTA_VALUE,POWER_MAX_DELTA_VALUE),
+                            ((LC4OS.POWER_MIN_DELTA_VALUE+LC4OS.POWER_MAX_DELTA_VALUE) / 2) 
+                ),2  
+            ) AS DELTA_PWR_NORM,
+       LC4OS.EXECUTIONGUID,
+       LC4OS.EXECUTIONSTARTTIMESTAMP,
+       LC4OS.TECH_TYPE,
+       LC4OS.CLID,
+       LC4OS.PROFILEID,
+       LC4OS.PROFILE_NAME,
+       LC4C.BSID,
+       LC4C.BASESTATION,
+       LC4C.CELLID,
+       LC4C.CELL,
+       LC4C.ARFCN_CATEGORY, 
+       LC4R.TAPC90_DIST,
+       LC4R.AVG_DIST_BEST2SITE,
+       LC4R.ACT_NBR_DIST_MEDIAN,
+       LC4R.PC90_NBRDIST_MEDIAN,
+       LC4R.PC90_NBRCNT_COUNTER,
+       LC4R.SITE_COUNT_INSIDE_ARC,
+       LC4R.ACT_NBRCNT,
+       LC4R.PROCESS_TYPE,  
+       LC4OS.POWER_MIN_DELTA_VALUE, LC4OS.POWER_MAX_DELTA_VALUE,   /* UI BASED DEFINATIONS */
+       LC4OS.POWER_MIN_VALUE, LC4OS.POWER_MAX_VALUE,               /* UI BASED DEFINATIONS */
+       LC4C.CPICHPOWER, LC4C.MINCPICHPOWER, LC4C.MAXCPICHPOWER,   /* CELL BASED DEFINATIONS */
+       LC4OS.ETILT_MIN_DELTA_VALUE, LC4OS.ETILT_MAX_DELTA_VALUE,   /* UI BASED DEFINATIONS */
+       LC4OS.ETILT_MAX_VALUE, LC4OS.ETILT_MIN_VALUE,               /* UI BASED DEFINATIONS */
+       LC4C.ETILT, LC4C.MINTILT, LC4C.MAXTILT,                     /* CELL BASED DEFINATIONS */
+       LC4OS.ROP_STARTTIME,
+       LC4OS.ROP_ENDTIME,
+       LC4OS.ETILT_SWITCH,
+       LC4OS.CARRIERPOWER_SWITCH ,   
+       ROUND ((LC4C.BEST3NONCOSITE_RAB_ATTEMPT - LC4C.RAB_ATTEMPT) / decode(LC4C.BEST3NONCOSITE_RAB_ATTEMPT,0,1,LC4C.BEST3NONCOSITE_RAB_ATTEMPT),2)* 100 AS ToleratedTraffic,
+       LC4C.PRB_UTILIZATION,
+       LC4C.BEST3NONCOSITE_RAB_ATTEMPT,
+       LC4C.RAB_ATTEMPT,
+       LC4OS.UNDERSHOOT_TOLERATED_ERAB_DIF,
+       LC4C.VENDOR,
+       LC4C.CRITICAL_BAD_COVERAGE,
+       LC4OS.UNDERSHOOT_BORDER_TRAFFIC_RT,
+       LC4C.COVERAGEHOATTEMPTPERRAB,
+       LC4OS.UNDERSHOOT_IRAT_PER_CALL,
+       LC4C.BORDER_TRAFFIC,
+       UNDERSHOOT_CRITICAL_BAD_COV,
+       LC4OS.UNDERSOOT_ALLOWED_PRB_UTIL,
+       LC4C.IRAT_ATTEMPT,
+       LC4C.IRAT_ACTIVITY_PER_CALL,
+       LC4OS.OVERSHOOT_SHO_OVERHEAD,
+       LC4C.SHO_OVERHEAD
+  FROM LS_CCO_MT_CELL LC4C
+       INNER JOIN LS_CCO_MT_GENERAL_SETTINGS LC4OS
+          ON     LC4C.EXECUTIONSTARTTIMESTAMP = LC4OS.EXECUTIONSTARTTIMESTAMP
+             AND LC4C.EXECUTIONGUID = LC4OS.EXECUTIONGUID
+             AND LC4C.PROFILEID = LC4OS.PROFILEID
+             AND LC4C.CLID = LC4OS.CLID
+       INNER JOIN LS_CCO_MT_ALL_REPORT LC4R
+          ON     LC4R.EXECUTIONSTARTTIMESTAMP = LC4C.EXECUTIONSTARTTIMESTAMP
+             AND LC4R.EXECUTIONGUID = LC4C.EXECUTIONGUID
+             AND LC4R.CELLID = LC4C.CELLID
+    WHERE LC4R.PROCESS_TYPE='OVERSHOOT'
+       AND LEAST (LC4C.ACT_NBR_DIST_MEDIAN, LC4R.TAPC90_DIST) >  AVG_DIST_BEST2SITE  --TODO: Ask Enis
+       AND (LC4R.TAPC90_DIST - LC4R.AVG_DIST_BEST2SITE) / decode(LC4R.TAPC90_DIST,0,1,LC4R.TAPC90_DIST) > 0  /* PISON-7996 LC4OS.AllowedOvershootPercentage */
+       AND LC4C.HISTOGRAMSUM > 100
+       AND LC4C.CELL_AVAILABILITY >= LC4OS.CCO_AVAIL
+       AND LC4R.ACT_NBRCNT > LC4OS.OVERSHOOT_MIN_ACTIVE_NE /*LC4OS.MinNumberofActiveNeighbors */
+       AND LC4R.SITE_COUNT_INSIDE_ARC >= LC4OS.OVERSHOOT_MIN_SITE_IN_AREA /*MINREQUIREDSITECNT  */
+       AND LC4R.AVG_DIST_BEST2SITE IS NOT NULL
+       AND LC4R.ACT_NBR_DIST_MEDIAN <> 0
+       AND LC4OS.OVERSHOOT_SWITCH = 'true' 
+       AND LC4OS.EXECUTIONSTARTTIMESTAMP = V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP
+       AND LC4OS.EXECUTIONGUID = V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID
+    )
+   ,
+   V_COMBINE_TECHS AS 
+   (
+    select * from V_DATA_OVERSHOOT_1 WHERE CLID =322 
+    UNION ALL
+    select * from V_DATA_OVERSHOOT_1 WHERE CLID =321 AND SHO_OVERHEAD > OVERSHOOT_SHO_OVERHEAD
+    )  
+    SELECT    
+         V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID,
+         V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP,
+         PROCESS_TYPE,
+         TECH_TYPE,
+         CLID,
+         PROFILEID,
+         PROFILE_NAME,
+         BSID,
+         BASESTATION,
+         CELLID,
+         CELL,
+         ARFCN_CATEGORY,
+         MIN(ETILT) ETILT, 
+         MIN(GREATEST(NVL(MINTILT,ETILT_MIN_VALUE),ETILT_MIN_VALUE)) AS MINTILT,
+         MIN(LEAST(NVL(MAXTILT,ETILT_MAX_VALUE),ETILT_MAX_VALUE))    AS MAXTILT,  
+         MIN(GREATEST(NVL(MINCPICHPOWER,POWER_MIN_VALUE),POWER_MIN_VALUE)) AS MINCARRIERPOWER,
+         MIN(LEAST(NVL(MAXCPICHPOWER,POWER_MAX_VALUE),POWER_MAX_VALUE))    AS  MAXCARRIERPOWER,
+         MIN(CPICHPOWER) AS CPICHPOWER,  
+         MIN(ROP_STARTTIME) AS ROPSTARTTIME,
+         MIN(ROP_ENDTIME) AS ROPENDTIME,
+         ROUND(MAX(CASE 
+                WHEN DELTA_NORM>=0.85 AND DELTA_NORM<1.00 THEN LEAST(DELTA_TILT_NORM,GREATEST(60,ETILT_MIN_DELTA_VALUE))
+                WHEN DELTA_NORM>=0.75 AND DELTA_NORM<0.85 THEN LEAST(DELTA_TILT_NORM,GREATEST(50,ETILT_MIN_DELTA_VALUE))
+                WHEN DELTA_NORM>=0.65 AND DELTA_NORM<0.75 THEN LEAST(DELTA_TILT_NORM,GREATEST(40,ETILT_MIN_DELTA_VALUE))
+                WHEN DELTA_NORM>=0.50 AND DELTA_NORM<0.65 THEN LEAST(DELTA_TILT_NORM,GREATEST(30,ETILT_MIN_DELTA_VALUE))
+                WHEN DELTA_NORM>=0.30 AND DELTA_NORM<0.50 THEN LEAST(DELTA_TILT_NORM,GREATEST(20,ETILT_MIN_DELTA_VALUE))
+                WHEN DELTA_NORM>=0    AND DELTA_NORM<0.30 THEN LEAST(DELTA_TILT_NORM,GREATEST(10,ETILT_MIN_DELTA_VALUE))
+         END)/StepSizeCG)*StepSizeCG DELTA_TILT_FINAL,
+         ROUND(MAX(CASE 
+                WHEN DELTA_NORM>=0.85 AND DELTA_NORM<1.00 THEN LEAST(DELTA_PWR_NORM,GREATEST(30,POWER_MIN_DELTA_VALUE))
+                WHEN DELTA_NORM>=0.75 AND DELTA_NORM<0.85 THEN LEAST(DELTA_PWR_NORM,GREATEST(25,POWER_MIN_DELTA_VALUE))
+                WHEN DELTA_NORM>=0.65 AND DELTA_NORM<0.75 THEN LEAST(DELTA_PWR_NORM,GREATEST(20,POWER_MIN_DELTA_VALUE))
+                WHEN DELTA_NORM>=0.50 AND DELTA_NORM<0.65 THEN LEAST(DELTA_PWR_NORM,GREATEST(15,POWER_MIN_DELTA_VALUE))
+                WHEN DELTA_NORM>=0.30 AND DELTA_NORM<0.50 THEN LEAST(DELTA_PWR_NORM,GREATEST(10,POWER_MIN_DELTA_VALUE))
+                WHEN DELTA_NORM>=0    AND DELTA_NORM<0.30 THEN LEAST(DELTA_PWR_NORM,GREATEST(05,POWER_MIN_DELTA_VALUE))
+         END)/StepSizeCG)*StepSizeCG DELTA_PWR_FINAL,
+         MAX(TOTAL_OVERSHOOT_COST) TOTAL_OVERSHOOT_COST, 
+         MIN(ETILT_SWITCH) ETILT_SWITCH,
+         MIN(CARRIERPOWER_SWITCH) CARRIERPOWER_SWITCH,
+         MIN(ACT_NBRCNT) AS ACT_NEI
+     FROM V_COMBINE_TECHS
+     GROUP BY PROFILE_NAME,PROFILEID,BSID,BASESTATION,CELL,ARFCN_CATEGORY,CELLID, TECH_TYPE,CLID,PROCESS_TYPE;
+
+       COMMIT;
+
+ END;
+
+PROCEDURE FIND_CELL_REPORT_GAP_OS
+ IS  
+ BEGIN
+             /***********************  COVERAGE ETILT  *********************************************************/
+
+   INSERT INTO LS_CCO_MT_CELL_ACTION_REPORT (EXECUTIONGUID,EXECUTIONSTARTTIMESTAMP,PROCESS_TYPE,CLID,NODEID,NODE,PARAMNAME,OLDVALUE,NEWVALUE,
+                                       REASON, PROFILEID,ACTION,CELL,CELLID,ARFCN_CATEGORY,MINVALUE,MAXVALUE,
+                                       DELTAVALUE,SKIP_REASON,ACT_NEI,TOTAL_COST,RETID,RETMONAME_SPLITTED,ISWEAKCOVERAGE)
+
+         with v_process_Ret_maps as
+     ( SELECT DISTINCT RETID  FROM ALL_CELLS_RET T WHERE T.ACTIVE=1 AND T.CELLID IN
+                         (SELECT SUB.CELLID FROM LS_CCO_MT_CELL_PRE_ACTION SUB 
+                            WHERE SUB.ETILT_SWITCH='true' 
+                              AND SUB.EXECUTIONGUID = V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID
+                              AND SUB.EXECUTIONSTARTTIMESTAMP = V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP
+                         )
+    )
+  , V_RESULT2 AS
+    (
+     select  /*+ ORDERED USE_HASH(map1 acr) USE_HASH(cco_cells acr) */
+     cco_cells.EXECUTIONGUID,
+     cco_cells.EXECUTIONSTARTTIMESTAMP,
+     cco_cells.PROFILEID,  
+     cco_cells.CLID,
+     cco_cells.BSID,
+     cco_cells.BASESTATION,
+     proc_Cells.PROCESS_TYPE, 
+     cco_cells.ARFCN_CATEGORY, 
+     cco_cells.CELLID,
+     cco_cells.CELL,
+     CASE WHEN proc_Cells.CELLID IS NOT NULL THEN 1 ELSE 0 END IS_CELL_PROCESS,
+     CASE WHEN  cco_cells.ARFCN_CATEGORY IS NOT NULL THEN 1 ELSE 0 END IS_CELL_CATEGORY,
+     proc_Cells.DELTA_TILT_FINAL,
+     proc_Cells.ETILT, 
+     proc_Cells.MINTILT,
+     proc_Cells.MAXTILT,  
+     acr.NMONAME AS RETMONAME_SPLITTED,
+     acr.RETID,
+     TOTAL_COST,
+     proc_Cells.ACT_NEI,
+     proc_Cells.ISWEAKCOVERAGE
+     from v_process_Ret_maps map1 
+     join all_cells_Ret acr on map1.retid=acr.retid  
+     join LS_CCO_MT_CELL cco_cells on (cco_cells.cellid = acr.cellid  )
+     join LS_CCO_MT_GENERAL_SETTINGS setting on ( setting.PROFILEID=cco_cells.PROFILEID AND cco_cells.CLID=setting.CLID AND setting.EXECUTIONGUID = cco_cells.EXECUTIONGUID AND setting.EXECUTIONSTARTTIMESTAMP = cco_cells.EXECUTIONSTARTTIMESTAMP) 
+     left join LS_CCO_MT_CELL_PRE_ACTION proc_Cells on (proc_Cells.cellid = cco_cells.cellid AND proc_Cells.EXECUTIONGUID = cco_cells.EXECUTIONGUID AND proc_Cells.EXECUTIONSTARTTIMESTAMP = cco_cells.EXECUTIONSTARTTIMESTAMP ) 
+     where acr.active=1  AND setting.ETILT_SWITCH='true'
+      AND cco_cells.EXECUTIONGUID = V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID
+      AND cco_cells.EXECUTIONSTARTTIMESTAMP =  V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP
+    ),
+  V_RESULT3 
+    AS
+    (
+     SELECT t.*,
+       CASE  WHEN ISWEAKCOVERAGE=0 AND PROCESS_TYPE='OVERSHOOT'  THEN 'TOTAL_OVERSHOOT_COST '  || TO_cHAR(TOTAL_COST)
+             WHEN ISWEAKCOVERAGE=0 AND PROCESS_TYPE='UNDERSHOOT' THEN 'TOTAL_UNDERSHOOT_COST ' || TO_cHAR(TOTAL_COST)
+             WHEN ISWEAKCOVERAGE=1 AND PROCESS_TYPE='UNDERSHOOT' THEN 'WEAK_COVERAGE' END     AS DESCRIPTION,
+               CASE WHEN IS_CELL_PROCESS=1 AND DELTA_TILT_FINAL IS NULL THEN   'CANT FOUND DELTA VALUE'
+                    WHEN PROCESS_TYPE='OVERSHOOT'  AND ETILT >= MAXTILT THEN  'Max Tilt ('|| TO_CHAR(MAXTILT) || ') achieved - cannot tilt anymore'
+                    WHEN PROCESS_TYPE='UNDERSHOOT' AND ETILT <= MINTILT THEN  'Min Tilt (' || TO_CHAR(MINTILT) || ') achieved - cannot tilt anymore' 
+                    WHEN IS_CELL_PROCESS=1 AND ETILT IS NULL THEN 'Missing Initial TILT Value'
+                    WHEN PROCESS_TYPE IS NULL THEN 'NO ACTION'
+                    ELSE NULL 
+               END AS SKIP_REASON,      --:TODO GOKHAN  
+                CASE  PROCESS_TYPE 
+                   WHEN 'OVERSHOOT' THEN  LEAST(ETILT+DELTA_TILT_FINAL,MAXTILT) 
+                   WHEN 'UNDERSHOOT' THEN  GREATEST(ETILT-DELTA_TILT_FINAL,MINTILT) 
+                  END AS  NEW_VALUE, 
+               'TILT' AS PARAMNAME 
+       FROM V_RESULT2 t   
+     ) 
+     SELECT  EXECUTIONGUID,EXECUTIONSTARTTIMESTAMP, PROCESS_TYPE, CLID, BSID,  BASESTATION, PARAMNAME,ETILT,
+             NEW_VALUE, 
+             DESCRIPTION , 
+             PROFILEID,
+             CASE WHEN SKIP_REASON IS NOT NULL THEN 'SKIP' ELSE 'modify' END AS ACTION_TYPE ,
+             CELL, CELLID, ARFCN_CATEGORY,  MINTILT,MAXTILT, DELTA_TILT_FINAL, SKIP_REASON,  ACT_NEI ,TOTAL_COST, RETID, RETMONAME_SPLITTED,ISWEAKCOVERAGE
+        FROM V_RESULT3 S1;
+
+       COMMIT;  
+
+       /***********************   POWER CPICHPOWER  *********************************************************/
+
+   INSERT INTO LS_CCO_MT_CELL_ACTION_REPORT (EXECUTIONGUID,EXECUTIONSTARTTIMESTAMP,PROCESS_TYPE,CLID,NODEID,NODE,PARAMNAME,OLDVALUE,NEWVALUE,
+                                             REASON, PROFILEID,ACTION,CELL,CELLID,ARFCN_CATEGORY,MINVALUE,MAXVALUE,
+                                             DELTAVALUE,SKIP_REASON,ACT_NEI,TOTAL_COST,RETID,RETMONAME_SPLITTED
+                                            )
+    with v_process_Ret_maps as
+     ( select distinct retid  from all_Cells_Ret t where t.active=1 and t.cellid IN
+                         (SELECT SUB.cellid FROM LS_CCO_MT_CELL_PRE_ACTION SUB 
+                            WHERE SUB.CARRIERPOWER_SWITCH='true' 
+                              AND SUB.EXECUTIONGUID = V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID
+                              AND SUB.EXECUTIONSTARTTIMESTAMP = V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP
+                         )
+     )
+  , V_RESULT2 AS
+    (
+     select  
+     cco_cells.EXECUTIONGUID,
+     cco_cells.EXECUTIONSTARTTIMESTAMP,
+     cco_cells.PROFILEID,  
+     cco_cells.CLID,
+     cco_cells.BSID,
+     cco_cells.BASESTATION,
+     proc_Cells.PROCESS_TYPE, 
+     cco_cells.ARFCN_CATEGORY, 
+     cco_cells.CELLID,
+     cco_cells.CELL,
+     CASE WHEN proc_Cells.CELLID IS NOT NULL THEN 1 ELSE 0 END IS_CELL_PROCESS,
+     CASE WHEN  cco_cells.ARFCN_CATEGORY IS NOT NULL THEN 1 ELSE 0 END IS_CELL_CATEGORY,
+     proc_Cells.DELTA_PWR_FINAL,
+     proc_Cells.CPICHPOWER, 
+     proc_Cells.MINCARRIERPOWER,
+     proc_Cells.MAXCARRIERPOWER,  
+     acr.NMONAME AS RETMONAME_SPLITTED,
+     acr.RETID,
+     TOTAL_COST,
+     proc_Cells.ACT_NEI
+     from v_process_Ret_maps map1 
+     join all_cells_Ret acr on map1.retid=acr.retid  
+     join LS_CCO_MT_CELL cco_cells on (cco_cells.cellid = acr.cellid  )
+     join LS_CCO_MT_GENERAL_SETTINGS setting on ( setting.PROFILEID=cco_cells.PROFILEID AND cco_cells.CLID=setting.CLID AND setting.EXECUTIONGUID = cco_cells.EXECUTIONGUID AND setting.EXECUTIONSTARTTIMESTAMP = cco_cells.EXECUTIONSTARTTIMESTAMP) 
+     left join LS_CCO_MT_CELL_PRE_ACTION proc_Cells on (proc_Cells.cellid = cco_cells.cellid AND proc_Cells.EXECUTIONGUID = cco_cells.EXECUTIONGUID AND proc_Cells.EXECUTIONSTARTTIMESTAMP = cco_cells.EXECUTIONSTARTTIMESTAMP ) 
+     where acr.active=1  and setting.carrierpower_switch ='true'
+      AND cco_cells.EXECUTIONGUID = V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID
+      AND cco_cells.EXECUTIONSTARTTIMESTAMP = V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP
+     ),
+  V_RESULT3 
+    AS 
+    (
+     SELECT t.*,
+       CASE  PROCESS_TYPE WHEN 'OVERSHOOT'  THEN 'TOTAL_OVERSHOOT_COST ' WHEN 'UNDERSHOOT' THEN 'TOTAL_UNDERSHOOT_COST '  END   || TO_cHAR(TOTAL_COST) AS DESCRIPTION,
+                CASE 
+                    WHEN IS_CELL_PROCESS=1 AND DELTA_PWR_FINAL IS NULL THEN  'CANT FOUND DELTA VALUE' 
+                    WHEN PROCESS_TYPE='OVERSHOOT'  AND CPICHPOWER <= MINCARRIERPOWER THEN  'ALREADY EQUAL TO OR UNDER MINIMUM CPICHPOWER ('||MINCARRIERPOWER||')'
+                    WHEN PROCESS_TYPE='UNDERSHOOT' AND CPICHPOWER >= MAXCARRIERPOWER THEN 'ALREADY EQUAL TO OR OVER MAXIMUM CPICHPOWER ('||MAXCARRIERPOWER||')'
+                    WHEN IS_CELL_PROCESS=1 AND CPICHPOWER IS NULL THEN   'Missing Initial Carrier Power Value'
+                     WHEN PROCESS_TYPE IS NULL THEN 'NO ACTION'
+                    ELSE NULL
+               END AS SKIP_REASON, 
+               CASE  PROCESS_TYPE WHEN 'OVERSHOOT'  THEN LEAST(CPICHPOWER+DELTA_PWR_FINAL,MINCARRIERPOWER) 
+                                  WHEN 'UNDERSHOOT' THEN GREATEST(CPICHPOWER-DELTA_PWR_FINAL,MAXCARRIERPOWER) 
+               END AS  NEW_VALUE ,
+                'CPICHPOWER' AS PARAMNAME  
+     FROM V_RESULT2 t 
+     ) 
+     SELECT      EXECUTIONGUID,  EXECUTIONSTARTTIMESTAMP,  PROCESS_TYPE, CLID,  BSID,  BASESTATION, PARAMNAME, CPICHPOWER,
+                 NEW_VALUE,
+                 DESCRIPTION || TOTAL_COST, 
+                 PROFILEID,
+                 CASE WHEN SKIP_REASON IS NOT NULL THEN 'SKIP' ELSE 'modify' END AS ACTION_TYPE ,
+                 CELL, CELLID, ARFCN_CATEGORY, MINCARRIERPOWER, MAXCARRIERPOWER, DELTA_PWR_FINAL, SKIP_REASON, ACT_NEI , TOTAL_COST, RETID, RETMONAME_SPLITTED
+                 FROM V_RESULT3 S1;
+
+            COMMIT;
+
+ END;
+
+ PROCEDURE FILL_RET_ACTION_REPORT 
+ IS 
+
+ BEGIN
+
+    insert into LS_CCO_MT_RET_ACTION_REPORT (EXECUTIONGUID,EXECUTIONSTARTTIMESTAMP,PROFILEID,PROFILENAME,RETID,RETMONAME_SPLITTED,CURRENT_TILT,NEW_TILT,MIN_TILT,MAX_TILT,DELTA_TILT,TOTAL_COST,
+                                       CATEGORY_1_ACTION,CATEGORY_2_ACTION,CATEGORY_3_ACTION,CATEGORY_4_ACTION,FINAL_ACTION)
+  WITH V_DATA_1 
+    AS  
+    (  
+    SELECT /*+  ORDERED USE_NL(r c)  */ 
+          PROFILEID,PROFILENAME, ARFCN_CATEGORY ,  
+          MAX(case when PROCESS_TYPE ='UNDERSHOOT' AND ACTION='modify' THEN 1 ELSE 0 END) AS UNDERSHOOT_EXISTS,
+          MAX(case when PROCESS_TYPE ='OVERSHOOT'  AND ACTION='modify' THEN 1 ELSE 0 END) AS OVERSHOOT_EXISTS,
+          MAX(case when  ACTION='SKIP' THEN 1 ELSE 0 END) AS NO_ACTION_EXISTS,
+          AVG(DELTAVALUE) AVG_DELTA_BY_CATEGORY,
+          AVG(TOTAL_COST) AVG_COST_BY_CATEGORY,
+          RETMONAME_SPLITTED,
+          RETID,
+          MAX(OLDVALUE) AS ORJ_VALUE_TILT,
+          NULL AS NEWVALUE,
+          MIN(MINVALUE) AS MINVALUE,
+          MAX(MAXVALUE) AS MAXVALUE
+        FROM LS_CCO_MT_CELL_ACTION_REPORT 
+        WHERE PARAMNAME  IN('TILT') -- TODO:kontrol
+         AND EXECUTIONGUID = V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID 
+         AND EXECUTIONSTARTTIMESTAMP = V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP
+        GROUP BY  ARFCN_CATEGORY,PROFILEID,PROFILENAME,RETID,PROCESS_TYPE,RETMONAME_SPLITTED,RETID  
+     ) 
+     , V_DATA_2
+     AS 
+      (
+         SELECT /*+   */ T.*,
+             CASE WHEN UNDERSHOOT_EXISTS=1 AND OVERSHOOT_EXISTS=1 THEN 'MIXED'
+                  WHEN UNDERSHOOT_EXISTS=0 AND OVERSHOOT_EXISTS=0 AND NO_ACTION_EXISTS =1 THEN 'NO_ACT'
+                  WHEN UNDERSHOOT_EXISTS=1 AND OVERSHOOT_EXISTS=0 THEN 'GAP'
+                  WHEN OVERSHOOT_EXISTS=1 AND UNDERSHOOT_EXISTS=0 THEN 'OS'
+             END CATEGORY_BASED_AGG_ACTION
+         FROM V_DATA_1 T
+       ) 
+        SELECT 
+              V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID,
+              V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP,
+              PROFILEID,
+              PROFILENAME, 
+              RETID,
+              RETMONAME_SPLITTED, 
+              MAX(ORJ_VALUE_TILT) AS OLDVALUE,
+              NULL AS NEWVALUE,
+              MIN(MINVALUE) AS MINVALUE,
+              MAX(MAXVALUE) AS MAXVALUE ,
+              ROUND(MIN(AVG_DELTA_BY_CATEGORY)) AS DELTA_BY_RET,
+              ROUND(MIN(AVG_COST_BY_CATEGORY),2)  AS COST_BY_RET ,
+              NVL(MIN(CASE  ARFCN_CATEGORY WHEN 'CATEGORY_1' THEN CATEGORY_BASED_AGG_ACTION END),'NULL')  AS CATEGORY_1_ACTION,
+              NVL(MIN(CASE  ARFCN_CATEGORY WHEN 'CATEGORY_2' THEN CATEGORY_BASED_AGG_ACTION  END),'NULL') AS CATEGORY_2_ACTION,
+              NVL(MIN(CASE  ARFCN_CATEGORY WHEN 'CATEGORY_3' THEN CATEGORY_BASED_AGG_ACTION  END),'NULL') AS CATEGORY_3_ACTION,
+              NVL(MIN(CASE  ARFCN_CATEGORY WHEN 'CATEGORY_4' THEN CATEGORY_BASED_AGG_ACTION END),'NULL')  AS CATEGORY_4_ACTION,
+              NULL AS FINAL_ACTION
+          FROM V_DATA_2     
+          GROUP BY PROFILEID,PROFILENAME, RETID,RETMONAME_SPLITTED; 
+
+        /**************************************SET SKIPPED NOT FOUND IN MAPPING ******************************************/
+
+        UPDATE  LS_CCO_MT_RET_ACTION_REPORT D  SET SKIP_REASON = 'No Action found in mapping'  , NEW_TILT = null, ACTION='SKIP',DIRECTION=NULL
+        WHERE D.EXECUTIONGUID = V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID AND D.EXECUTIONSTARTTIMESTAMP = V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP 
+          and NOT EXISTS ( SELECT 1 FROM LS_CCO_MT_ACTION_POLICIES T 
+                                    WHERE ( D.PROFILEID = T.PROFILEID AND D.CATEGORY_1_ACTION=T.CATEGORY1 
+                                            AND D.CATEGORY_2_ACTION=T.CATEGORY2 AND D.CATEGORY_3_ACTION=T.CATEGORY3 AND D.CATEGORY_4_ACTION=T.CATEGORY4 
+                                            AND  T.EXECUTIONGUID = D.EXECUTIONGUID AND T.EXECUTIONSTARTTIMESTAMP = D.EXECUTIONSTARTTIMESTAMP  
+                                          )
+                        );
+
+        /********************************FIND RELATED OSS ACTION IN MAPPING *********************************************/
+
+         MERGE INTO LS_CCO_MT_RET_ACTION_REPORT T  
+           USING LS_CCO_MT_ACTION_POLICIES S 
+             ON (    T.PROFILEID = S.PROFILEID 
+                 AND T.CATEGORY_1_ACTION=S.CATEGORY1 
+                 AND T.CATEGORY_2_ACTION=S.CATEGORY2 
+                 AND T.CATEGORY_3_ACTION=S.CATEGORY3 
+                 AND T.CATEGORY_4_ACTION=S.CATEGORY4 
+                 AND T.EXECUTIONGUID = S.EXECUTIONGUID 
+                 AND T.EXECUTIONSTARTTIMESTAMP = S.EXECUTIONSTARTTIMESTAMP 
+                 AND T.EXECUTIONGUID = V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID
+                 AND T.EXECUTIONSTARTTIMESTAMP = V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP 
+                ) 
+            WHEN MATCHED THEN UPDATE SET 
+            T.FINAL_ACTION = S.ACTION_R,
+            t.ACTION='modify',
+            T.DIRECTION='FW',
+            T.NEW_TILT =   CASE ACTION_R WHEN 'UPTILT' THEN ROUND(GREATEST(CURRENT_TILT-DELTA_TILT,MIN_TILT),2)
+                                         WHEN 'DOWNTILT' THEN ROUND(least(CURRENT_TILT+DELTA_TILT,MAX_TILT),2)
+                             END; 
+
+       /************ DETECT CLUSTERED RETS ******************/
+
+    INSERT INTO LS_CCO_MT_CLUSTER_REPORT (EXECUTIONGUID, EXECUTIONSTARTTIMESTAMP, SOURCE_RETMONAME, TARGET_RETMONAME, TOTAL_COST, HOATTEMPT, EXCLUDED_RANK)
+        WITH V_SETTING AS (    SELECT DISTINCT ClusterSizeCellCount, PROFILEID 
+                                FROM  LS_CCO_MT_GENERAL_SETTINGS  S 
+                                WHERE S.EXECUTIONSTARTTIMESTAMP=V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP
+                                  AND S.EXECUTIONGUID=V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID
+                          ),
+      V_DATA1 AS 
+                     ( 
+                      SELECT /*+ ORDERED USE_HASH(LC3R AR) */ 
+                            LC4OS.ClusterSizeCellCount,ACR.RETMONAME_SPLITTED AS SOURCE_MONAME, ACRN.RETMONAME_SPLITTED AS TARGET_MONAME , 
+                            SUM(LC3R.HO_ATTEMPT) AS SUM_HO_ATTEMPT,
+                            MAX(ACR.TOTAL_COST) AS TOTAL_COST,                               -- TODO:CHECK GOKHAN
+                            ROW_NUMBER () OVER (PARTITION BY ACR.RETMONAME_SPLITTED ORDER BY  MAX(ACR.TOTAL_COST) DESC NULLS LAST, AVG(LC3R.HO_ATTEMPT) DESC NULLS LAST) AS NBR_RNK 
+                            FROM   V_SETTING LC4OS 
+                              JOIN LS_CCO_MT_RET_ACTION_REPORT AR   
+                               ON   AR.EXECUTIONSTARTTIMESTAMP = V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP
+                                AND AR.EXECUTIONGUID = V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID
+                                AND LC4OS.PROFILEID = AR.PROFILEID  
+                              JOIN LS_CCO_MT_CELL_ACTION_REPORT ACR 
+                               ON ( ACR.RETID = AR.RETID )
+                              JOIN   LS_CCO_MT_REL LC3R
+                               ON     LC3R.EXECUTIONGUID=AR.EXECUTIONGUID
+                                AND  LC3R.EXECUTIONSTARTTIMESTAMP=AR.EXECUTIONSTARTTIMESTAMP
+                                AND  LC3R.CELLID = ACR.CELLID 
+                            JOIN LS_CCO_MT_CELL_ACTION_REPORT ACRN
+                               ON ( ACRN.CELLID=LC3R.NCELLID)
+                        WHERE
+                             AR.EXECUTIONSTARTTIMESTAMP=V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP AND AR.EXECUTIONGUID=V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID
+                         AND ACR.EXECUTIONGUID = V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID AND ACR.EXECUTIONSTARTTIMESTAMP = V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP
+                         AND ACRN.EXECUTIONGUID = V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID AND ACRN.EXECUTIONSTARTTIMESTAMP = V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP
+                         AND LC3R.SITENAME<>LC3R.NSITENAME  
+                         AND AR.FINAL_ACTION IN ('UPTILT','DOWNTILT')
+                        GROUP BY LC4OS.ClusterSizeCellCount,ACR.RETMONAME_SPLITTED,ACRN.RETMONAME_SPLITTED 
+                     )
+                     SELECT V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID,
+                           V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP,
+                           SOURCE_MONAME, 
+                           TARGET_MONAME,
+                           TOTAL_COST,
+                           SUM_HO_ATTEMPT,
+                           NBR_RNK
+                       FROM V_DATA1 
+                       where NBR_RNK<=ClusterSizeCellCount 
+                       order by TOTAL_COST DESC NULLS LAST,NBR_RNK;
+
+       /************ FLAG CLUSTERED RETS ******************/             
+
+       UPDATE LS_CCO_MT_RET_ACTION_REPORT T SET ACTION='SKIP', SKIP_REASON='DUE TO CLUSTERING' 
+            WHERE t.EXECUTIONSTARTTIMESTAMP = V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP
+              AND t.EXECUTIONGUID =  V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID 
+              AND T.ACTION IS NULL
+              AND T.PROFILEID IN  (SELECT SUB.PROFILEID FROM LS_CCO_MT_GENERAL_SETTINGS SUB 
+                                                WHERE     SUB.EXECUTIONSTARTTIMESTAMP = T.EXECUTIONSTARTTIMESTAMP
+                                                      AND SUB.EXECUTIONGUID=T.EXECUTIONGUID
+                                                      AND SUB.EXECUTIONSTARTTIMESTAMP = T.EXECUTIONSTARTTIMESTAMP 
+                                                      AND SUB.CCO_CLUSTER_SWITCH='true'
+                                  )
+              AND t.RETMONAME_SPLITTED IN (SELECT S.TARGET_RETMONAME FROM LS_CCO_MT_CLUSTER_REPORT S 
+                                                    WHERE S.EXECUTIONSTARTTIMESTAMP = T.EXECUTIONSTARTTIMESTAMP
+                                                      AND S.EXECUTIONGUID = T.EXECUTIONGUID
+                                          ); 
+
+                   COMMIT;     
+
+ END;
+
+ PROCEDURE FILL_POWER_ACTION_REPORT
+ IS
+ BEGIN
+
+  INSERT INTO LS_CCO_MT_POWER_ACTION_REPORT  (executionguid,executionstarttimestamp,profileid,profilename,category_1_action,category_2_action,category_3_action,category_4_action,
+                                            final_action,cellid,cell,paramname,CURRENT_POWER,NEW_POWER,MIN_POWER,MAX_POWER,DELTA_POWER,SKIP_REASON,reason,action,retid,retmoname_splitted
+                                            )
+    select ret_rept.EXECUTIONGUID, 
+    ret_rept.EXECUTIONSTARTTIMESTAMP,
+    ret_rept.PROFILEID,
+    cell_rept.PROFILENAME,
+    ret_rept.CATEGORY_1_ACTION,
+    ret_rept.CATEGORY_2_ACTION,
+    ret_rept.CATEGORY_3_ACTION,
+    ret_rept.CATEGORY_4_ACTION,
+    ret_rept.FINAL_ACTION,
+    cell_rept.CELLID,
+    cell_rept.CELL,
+    cell_rept.PARAMNAME ,
+    cell_rept.OLDVALUE  ,
+    cell_rept.NEWVALUE ,
+    cell_rept.MINVALUE,
+    cell_rept.MAXVALUE,
+    cell_rept.DELTAVALUE,
+    cell_rept.SKIP_REASON,
+    cell_rept.REASON ,
+    cell_rept.ACTION,
+    cell_rept.RETID,
+    cell_rept.RETMONAME_SPLITTED
+    from LS_CCO_MT_RET_ACTION_REPORT ret_rept 
+    join LS_CCO_MT_CELL_ACTION_REPORT cell_rept on (ret_rept.retid = cell_rept.retid and ret_rept.PROFILEID = cell_rept.PROFILEID and ret_rept.EXECUTIONGUID=cell_rept.EXECUTIONGUID 
+                                                        and ret_rept.EXECUTIONSTARTTIMESTAMP= cell_rept.EXECUTIONSTARTTIMESTAMP)
+    where ret_rept.ACTION='modify' 
+     AND cell_rept.PROCESS_TYPE IS NOT NULL  
+    -- AND cell_rept.ACTION='modify'  
+     and  ret_rept.FINAL_ACTION IN ('GAP_CPICH','OS_CPICH','ALL_CPICH')
+     AND cell_rept.PARAMNAME='CPICHPOWER'
+     AND ret_rept.EXECUTIONSTARTTIMESTAMP=V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP
+     AND ret_rept.EXECUTIONGUID=V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID;
+
+  COMMIT;
+  END;
+
+  PROCEDURE FILL_TILT_ACTION_REPORT
+  IS 
+  BEGIN
+
+ INSERT INTO  LS_CCO_MT_TILT_ACTION_REPORT   (executionguid,executionstarttimestamp,profileid,profilename,category_1_action,category_2_action,category_3_action,category_4_action,
+                                            final_action,paramname,current_tilt,new_tilt,min_tilt,max_tilt,delta_tilt,total_cost,action,retid,retmoname_splitted
+                                            )
+SELECT EXECUTIONGUID,
+       EXECUTIONSTARTTIMESTAMP,
+       PROFILEID,
+       PROFILENAME,
+       t.CATEGORY_1_ACTION,
+       CATEGORY_2_ACTION,
+       CATEGORY_3_ACTION,
+       CATEGORY_4_ACTION,
+       t.FINAL_ACTION,
+       'TILT' AS PARAMNAME,
+       t.CURRENT_TILT,
+       NEW_TILT,
+       MIN_TILT,
+       MAX_TILT,
+       t.DELTA_TILT,
+       TOTAL_COST,
+       t.ACTION,
+       RETID,
+       t.RETMONAME_SPLITTED
+  FROM LS_CCO_MT_RET_ACTION_REPORT t
+ WHERE     FINAL_ACTION IN ('UPTILT', 'DOWNTILT')
+       AND T.EXECUTIONGUID = V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID
+       AND T.EXECUTIONSTARTTIMESTAMP = V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP;
+
+COMMIT;
+
+ END;
+
+ PROCEDURE FILL_ROLLBACK_OPERATIONS
+ IS
+ V_CLUSTER_SIZE NUMBER :=3;
+ BEGIN 
+
+
+INSERT INTO LS_CCO_MT_CELL_ROLLBACK_KPIS
+     (EXECUTIONGUID, EXECUTIONSTARTTIMESTAMP, TECH_TYPE, CLID, PROFILEID, BSID, BASESTATION, CELLID, CELL, ARFCN, AZIMUTH, BEAMWIDTH, ETILT, MINTILT, MAXTILT, 
+       CPICHPOWER, SITENAME, SECTORID, BAND, MNC, VENDOR, VENDORID, ISTARGET, CELL_AVAILABILITY_REF, CA_DATA_VOLUME_REF, IRAT_ATTEMPT_REF, TOTAL_FAIL_REF, 
+       NUMBER_OF_DROPS_VOICE_REF, NUMBER_OF_DROPS_DATA_REF, RAB_ATTEMPT_REF, VOICE_TRAFFIC_REF, DATA_VOLUME_REF, CAPACITY_UTILIZATION_REF, CELL_AVAILABILITY_CONS, 
+       CA_DATA_VOLUME_CONS, IRAT_ATTEMPT_CONS, TOTAL_FAIL_CONS, NUMBER_OF_DROPS_VOICE_CONS, DROP_RATE_DATA_CONS, NUMBER_OF_DROPS_DATA_CONS, RAB_ATTEMPT_CONS, 
+       VOICE_TRAFFIC_CONS, DATA_VOLUME_CONS, CAPACITY_UTILIZATION_CONS
+      ) 
+ SELECT /*+ ORDERED FULL(LC4OS) FULL(ARFCN_MAP) FULL(PLSC) FULL(PLC4CK) USE_HASH(PLSC PLC4CK)  */
+                KPI_ROLLBACK_REF.EXECUTIONGUID,
+                KPI_ROLLBACK_REF.EXECUTIONSTARTTIMESTAMP, 
+                NULL AS TECH_TYPE,
+                KPI_ROLLBACK_REF.CLID,
+                KPI_ROLLBACK_REF.PROFILEID,
+                KPI_ROLLBACK_REF.BASESTATIONID ,
+                KPI_ROLLBACK_REF.BASESTATIONNAME,
+                KPI_ROLLBACK_REF.CELLID, 
+                KPI_ROLLBACK_REF.CELL, 
+                KPI_ROLLBACK_REF.ARFCN, 
+                KPI_ROLLBACK_REF.AZIMUTH,
+                KPI_ROLLBACK_REF.BEAMWIDTH ,
+                KPI_ROLLBACK_REF.ETILT,
+                KPI_ROLLBACK_REF.MINTILT,
+                KPI_ROLLBACK_REF.MAXTILT,
+                KPI_ROLLBACK_REF.CPICHPOWER,
+                KPI_ROLLBACK_REF.SITENAME,
+                KPI_ROLLBACK_REF.SECTORID,
+                KPI_ROLLBACK_REF.BAND,
+                KPI_ROLLBACK_REF.MNC,  
+               -- KPI_ROLLBACK_REF.RETMONAME, 
+                KPI_ROLLBACK_REF.VENDORname,
+                KPI_ROLLBACK_REF.VENDORID, 
+                KPI_ROLLBACK_REF.ISTARGET,
+                ---------------- REFERANCE ROLLBACK PERIOD --------------  
+                KPI_ROLLBACK_REF.CELL_AVAILABILITY       AS CELL_AVAILABILITY_REF,
+                KPI_ROLLBACK_REF.CA_DATA_VOLUME          AS CA_DATA_VOLUME_REF,
+                KPI_ROLLBACK_REF.IRAT_ATTEMPT            AS IRAT_ATTEMPT_REF,
+                KPI_ROLLBACK_REF.TOTAL_FAIL              AS TOTAL_FAIL_REF,
+                KPI_ROLLBACK_REF.NUMBER_OF_DROPS_VOICE   AS NUMBER_OF_DROPS_VOICE_REF,
+                KPI_ROLLBACK_REF.NUMBER_OF_DROPS_DATA    AS NUMBER_OF_DROPS_DATA_REF,
+                KPI_ROLLBACK_REF.RAB_ATTEMPT             AS RAB_ATTEMPT_REF,
+                KPI_ROLLBACK_REF.VOICE_TRAFFIC           AS VOICE_TRAFFIC_REF,
+                KPI_ROLLBACK_REF.DATA_VOLUME             AS DATA_VOLUME_REF,
+                CASE  KPI_ROLLBACK_REF.CLID  
+                 WHEN 321 THEN GREATEST(KPI_ROLLBACK_REF.CODE_UTILIZATION,KPI_ROLLBACK_REF.POWER_UTILIZATION)
+                 WHEN 322 THEN KPI_ROLLBACK_REF.PRB_UTILIZATION 
+                END                                  AS CAPACITY_UTILIZATION_REF, --
+                 ---------------- CONSIDERED ROLLBACK PERIOD --------------  
+                KPI_ROLLBACK_CONS.CELL_AVAILABILITY       AS CELL_AVAILABILITY_CONS,
+                KPI_ROLLBACK_CONS.CA_DATA_VOLUME          AS CA_DATA_VOLUME_CONS,--
+                KPI_ROLLBACK_CONS.IRAT_ATTEMPT            AS IRAT_ATTEMPT_CONS,--
+                KPI_ROLLBACK_CONS.TOTAL_FAIL              AS TOTAL_FAIL_CONS,--
+                KPI_ROLLBACK_CONS.NUMBER_OF_DROPS_VOICE   AS NUMBER_OF_DROPS_VOICE_CONS,--
+                KPI_ROLLBACK_CONS.DROP_RATE_DATA          AS DROP_RATE_DATA_CONS,
+                KPI_ROLLBACK_CONS.NUMBER_OF_DROPS_DATA    AS NUMBER_OF_DROPS_DATA_CONS,--
+                KPI_ROLLBACK_CONS.RAB_ATTEMPT             AS RAB_ATTEMPT_CONS,--
+                KPI_ROLLBACK_CONS.VOICE_TRAFFIC           AS VOICE_TRAFFIC_CONS,--
+                KPI_ROLLBACK_CONS.DATA_VOLUME             AS DATA_VOLUME_CONS,--
+                CASE  KPI_ROLLBACK_CONS.CLID 
+                 WHEN 321 THEN GREATEST(KPI_ROLLBACK_CONS.CODE_UTILIZATION,KPI_ROLLBACK_CONS.POWER_UTILIZATION)
+                 WHEN 322 THEN KPI_ROLLBACK_CONS.PRB_UTILIZATION 
+                END                                  AS CAPACITY_UTILIZATION_CONS
+           FROM  LS_CCO_MT_CELL_ALL_KPIS KPI_ROLLBACK_REF           
+                JOIN  LS_CCO_MT_CELL_ALL_KPIS KPI_ROLLBACK_CONS  
+                ON KPI_ROLLBACK_CONS.CELLID = KPI_ROLLBACK_REF.CELLID 
+          WHERE  KPI_ROLLBACK_REF.SNAPSHOTID = 'RollbackPeriod'
+          AND KPI_ROLLBACK_CONS.SNAPSHOTID = 'ConsideredRollbackPeriod'
+          AND KPI_ROLLBACK_REF.ISTARGET=1;
+
+       COMMIT;   
+
+       /********************************************************************************************************/
+
+        INSERT INTO LS_CCO_MT_CELL_ROLLBACK_REPORT (
+        EXECUTIONGUID, EXECUTIONSTARTTIMESTAMP, ETILT, MINTILT, MAXTILT, RETID, RET_SPLITTED, TECH_TYPE, CLID, PROFILEID, CELLID, 
+        CELL, SITENAME, SECTORID, NUMBER_OF_DROPS_DATA_REF, NUMBER_OF_DROPS_VOICE_REF, RAB_ATTEMPT_REF, VOICE_TRAFFIC_REF, CA_DATA_VOLUME_REF, 
+        TOTAL_FAIL_REF, CAPACITY_UTILIZATION_REF, IRAT_ATTEMPT_REF, NUMBER_OF_DROPS_DATA_CONS, NUMBER_OF_DROPS_VOICE_CONS, RAB_ATTEMPT_CONS, 
+        VOICE_TRAFFIC_CONS, CA_DATA_VOLUME_CONS, TOTAL_FAIL_CONS, CAPACITY_UTILIZATION_CONS, IRAT_ATTEMPT_CONS, AGG_NUMBER_OF_DROPS_DATA_REF, 
+        AGG_DROP_RATE_DATA_REF, AGG_NUMBER_OF_DROPS_VOICE_REF, AGG_DROP_RATE_VOICE_REF, AGG_VOICE_TRAFFIC_REF, AGG_CA_DATA_VOLUME_REF, AGG_TOTAL_FAIL_REF, 
+        AGG_MAX_CAPACITY_UTIL_REF, AGG_IRAT_ATTEMPT_REF, AGG_IRAT_PER_CALL_REF, AGG_NUMBER_OF_DROPS_DATA_CONS, AGG_DROP_RATE_DATA_CONS, 
+        AGG_NUMBER_OF_DROPS_VOICE_CONS, AGG_DROP_RATE_VOICE_CONS, AGG_VOICE_TRAFFIC_CONS, AGG_CA_DATA_VOLUME_CONS, AGG_TOTAL_FAIL_CONS, AGG_MAX_CAPACITY_UTIL_CONS,
+        AGG_IRAT_ATTEMPT_CONS, AGG_IRAT_PER_CALL_CONS)
+        with v_data1 as 
+            (
+            SELECT     
+             CELL.EXECUTIONGUID,CELL.EXECUTIONSTARTTIMESTAMP, 
+             AR.ETILT, ar.MINTILT, ar.MAXTILT,ar.RETID, ar.MONAME as RET_SPLITTED,
+             TECH_TYPE, CLID, PROFILEID,  CELL.CELLID, CELL.CELL, CELL.SECTORID,CELL.SITENAME,  
+             /***************  REFERANCE ROLLBACK SUM BY RET ******************************/
+             cell.NUMBER_OF_DROPS_DATA_REF,
+             cell.NUMBER_OF_DROPS_VOICE_REF,
+             cell.RAB_ATTEMPT_REF,
+             cell.VOICE_TRAFFIC_REF,
+             cell.CA_DATA_VOLUME_REF,
+             cell.TOTAL_FAIL_REF,
+             cell.CAPACITY_UTILIZATION_REF,
+             cell.IRAT_ATTEMPT_REF,
+             /***************  CONSIDER ROLLBACK SUM BY RET ******************************/
+             cell.NUMBER_OF_DROPS_DATA_CONS,
+             cell.NUMBER_OF_DROPS_VOICE_CONS,
+             cell.RAB_ATTEMPT_CONS,
+             cell.VOICE_TRAFFIC_CONS,
+             cell.CA_DATA_VOLUME_CONS,
+             cell.TOTAL_FAIL_CONS,
+             cell.CAPACITY_UTILIZATION_CONS,
+             cell.IRAT_ATTEMPT_CONS
+       from LS_CCO_MT_CELL_ROLLBACK_KPIS cell 
+       join ALL_CELLS_RET acr on acr.CELLID=cell.cellid
+       join ALL_RETS ar on ar.RETID=acr.RETID   
+       where cell.EXECUTIONGUID = V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID
+         AND cell.EXECUTIONSTARTTIMESTAMP = V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP
+       ), v_data2 as 
+            (
+        select       EXECUTIONGUID, EXECUTIONSTARTTIMESTAMP, ETILT, MINTILT, MAXTILT, RETID, RET_SPLITTED, TECH_TYPE, CLID, PROFILEID, CELLID, CELL, SITENAME, SECTORID,
+             /***************  REFERANCE ROLLBACK SUM BY RET ******************************/
+             NUMBER_OF_DROPS_DATA_REF,
+             NUMBER_OF_DROPS_VOICE_REF,
+             RAB_ATTEMPT_REF,
+             VOICE_TRAFFIC_REF,
+             CA_DATA_VOLUME_REF,
+             TOTAL_FAIL_REF,
+             CAPACITY_UTILIZATION_REF,
+             IRAT_ATTEMPT_REF,
+             /***************  CONSIDER ROLLBACK SUM BY RET ******************************/
+             NUMBER_OF_DROPS_DATA_CONS,
+             NUMBER_OF_DROPS_VOICE_CONS,
+             RAB_ATTEMPT_CONS,
+             VOICE_TRAFFIC_CONS,
+             CA_DATA_VOLUME_CONS,
+             TOTAL_FAIL_CONS,
+             CAPACITY_UTILIZATION_CONS,
+             IRAT_ATTEMPT_CONS,
+             /***************  REFERANCE ROLLBACK SUM BY RET ******************************/
+              SUM(NUMBER_OF_DROPS_DATA_REF) OVER(PARTITION BY RETID )   AS AGG_NUMBER_OF_DROPS_DATA_REF,
+              SUM(RAB_ATTEMPT_REF) OVER(PARTITION BY RETID ) AS AGG_RAB_ATTEMPT_REF,
+              SUM(NUMBER_OF_DROPS_VOICE_REF) OVER(PARTITION BY RETID )   AS AGG_NUMBER_OF_DROPS_VOICE_REF,
+              SUM(VOICE_TRAFFIC_REF) OVER(PARTITION BY RETID )   AS AGG_VOICE_TRAFFIC_REF,
+              SUM(CA_DATA_VOLUME_REF) OVER(PARTITION BY RETID )   AS AGG_CA_DATA_VOLUME_REF,
+              SUM(TOTAL_FAIL_REF) OVER(PARTITION BY RETID) AS AGG_TOTAL_FAIL_REF,
+              MAX(CAPACITY_UTILIZATION_REF) OVER(PARTITION BY RETID) AS AGG_MAX_CAPACITY_UTIL_REF,
+              SUM(IRAT_ATTEMPT_REF)    OVER(PARTITION BY RETID )   AS AGG_IRAT_ATTEMPT_REF,
+                /***************  CONSIDER ROLLBACK SUM BY RET ******************************/
+              SUM(NUMBER_OF_DROPS_DATA_CONS) OVER(PARTITION BY RETID )   AS AGG_NUMBER_OF_DROPS_DATA_CONS,
+              SUM(RAB_ATTEMPT_CONS) OVER(PARTITION BY RETID ) AS AGG_RAB_ATTEMPT_CONS,
+              SUM(NUMBER_OF_DROPS_VOICE_CONS) OVER(PARTITION BY RETID )   AS AGG_NUMBER_OF_DROPS_VOICE_CONS,
+              SUM(VOICE_TRAFFIC_CONS) OVER(PARTITION BY RETID )   AS AGG_VOICE_TRAFFIC_CONS,
+              SUM(CA_DATA_VOLUME_CONS) OVER(PARTITION BY RETID )   AS AGG_CA_DATA_VOLUME_CONS,
+              SUM(TOTAL_FAIL_CONS) OVER(PARTITION BY RETID) AS AGG_TOTAL_FAIL_CONS,
+              MAX(CAPACITY_UTILIZATION_CONS) OVER(PARTITION BY RETID) AS AGG_MAX_CAPACITY_UTIL_CONS,
+              SUM(IRAT_ATTEMPT_CONS)    OVER(PARTITION BY RETID )   AS AGG_IRAT_ATTEMPT_CONS
+              from v_data1 AR 
+            )
+            select 
+                 EXECUTIONGUID, EXECUTIONSTARTTIMESTAMP, ETILT, MINTILT, MAXTILT, RETID, RET_SPLITTED, TECH_TYPE, CLID, PROFILEID, CELLID, CELL, SITENAME, SECTORID,
+             /***************  REFERANCE ROLLBACK SUM BY RET ******************************/
+             NUMBER_OF_DROPS_DATA_REF,
+             NUMBER_OF_DROPS_VOICE_REF,
+             RAB_ATTEMPT_REF,
+             VOICE_TRAFFIC_REF,
+             CA_DATA_VOLUME_REF,
+             TOTAL_FAIL_REF,
+             CAPACITY_UTILIZATION_REF,
+             IRAT_ATTEMPT_REF,
+             /***************  CONSIDER ROLLBACK SUM BY RET ******************************/
+             NUMBER_OF_DROPS_DATA_CONS,
+             NUMBER_OF_DROPS_VOICE_CONS,
+             RAB_ATTEMPT_CONS,
+             VOICE_TRAFFIC_CONS,
+             CA_DATA_VOLUME_CONS,
+             TOTAL_FAIL_CONS,
+             CAPACITY_UTILIZATION_CONS,
+             IRAT_ATTEMPT_CONS,
+             /***************  REFERANCE ROLLBACK SUM BY RET ******************************/
+              SUM(NUMBER_OF_DROPS_DATA_REF) OVER(PARTITION BY RETID )   AS AGG_NUMBER_OF_DROPS_DATA_REF,
+              SUM(NUMBER_OF_DROPS_DATA_REF) OVER(PARTITION BY RETID ) / DECODE(AGG_RAB_ATTEMPT_REF,0,1,AGG_RAB_ATTEMPT_REF) AS AGG_DROP_RATE_DATA_REF,
+              SUM(NUMBER_OF_DROPS_VOICE_REF) OVER(PARTITION BY RETID )   AS AGG_NUMBER_OF_DROPS_VOICE_REF,
+              SUM(NUMBER_OF_DROPS_VOICE_REF) OVER(PARTITION BY RETID ) / DECODE(AGG_RAB_ATTEMPT_REF,0,1,AGG_RAB_ATTEMPT_REF) AS AGG_DROP_RATE_VOICE_REF,
+              SUM(VOICE_TRAFFIC_REF) OVER(PARTITION BY RETID )   AS AGG_VOICE_TRAFFIC_REF,
+              SUM(CA_DATA_VOLUME_REF) OVER(PARTITION BY RETID )   AS AGG_CA_DATA_VOLUME_REF,
+              SUM(TOTAL_FAIL_REF) OVER(PARTITION BY RETID) AS AGG_TOTAL_FAIL_REF,
+              MAX(CAPACITY_UTILIZATION_REF) OVER(PARTITION BY RETID) AS AGG_MAX_CAPACITY_UTIL_REF,
+              SUM(IRAT_ATTEMPT_REF)    OVER(PARTITION BY RETID )   AS AGG_IRAT_ATTEMPT_REF,
+              SUM(IRAT_ATTEMPT_REF)    OVER(PARTITION BY RETID ) / DECODE(AGG_RAB_ATTEMPT_REF,0,1,AGG_RAB_ATTEMPT_REF) AS AGG_IRAT_PER_CALL_REF,
+                /***************  CONSIDER ROLLBACK SUM BY RET ******************************/
+              SUM(NUMBER_OF_DROPS_DATA_CONS) OVER(PARTITION BY RETID )   AS AGG_NUMBER_OF_DROPS_DATA_CONS,
+              SUM(NUMBER_OF_DROPS_DATA_CONS) OVER(PARTITION BY RETID ) / DECODE(AGG_RAB_ATTEMPT_CONS,0,1,AGG_RAB_ATTEMPT_CONS) AS AGG_DROP_RATE_DATA_CONS,
+              SUM(NUMBER_OF_DROPS_VOICE_CONS) OVER(PARTITION BY RETID )   AS AGG_NUMBER_OF_DROPS_VOICE_CONS,
+              SUM(NUMBER_OF_DROPS_VOICE_CONS) OVER(PARTITION BY RETID ) / DECODE(AGG_RAB_ATTEMPT_CONS,0,1,AGG_RAB_ATTEMPT_CONS) AS AGG_DROP_RATE_VOICE_CONS,
+              SUM(VOICE_TRAFFIC_CONS) OVER(PARTITION BY RETID )   AS AGG_VOICE_TRAFFIC_CONS,
+              SUM(CA_DATA_VOLUME_CONS) OVER(PARTITION BY RETID )  AS AGG_CA_DATA_VOLUME_CONS,
+              SUM(TOTAL_FAIL_CONS) OVER(PARTITION BY RETID) AS AGG_TOTAL_FAIL_CONS,
+              MAX(CAPACITY_UTILIZATION_CONS) OVER(PARTITION BY RETID) AS AGG_MAX_CAPACITY_UTIL_CONS,
+              SUM(IRAT_ATTEMPT_CONS)    OVER(PARTITION BY RETID )   AS AGG_IRAT_ATTEMPT_CONS,
+              SUM(IRAT_ATTEMPT_CONS)    OVER(PARTITION BY RETID ) / DECODE(AGG_RAB_ATTEMPT_CONS,0,1,AGG_RAB_ATTEMPT_CONS) AS AGG_IRAT_PER_CALL_CONS
+             from v_data2;
+
+     COMMIT;
+
+     /********************************************************************************************************/
+
+     INSERT INTO LS_CCO_MT_TEMP_CLUSTER_KPIS (SITENAME, SECTORID, SUM_VOICE_TRAFFIC_REF, SUM_DATA_VOLUME_REF, SUM_VOICE_TRAFFIC_CONS, SUM_DATA_VOLUME_CONS)
+     WITH V_HO_BY_SITES AS
+      (  SELECT S.SITENAME, SECTORID, S.NSITENAME,  NSECTORID, SUM(HO_ATTEMPT) SUM_OF_HO_ATTEMPT 
+        FROM  LS_CCO_MT_REL s 
+        WHERE S.EXECUTIONGUID=V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID
+          AND S.EXECUTIONSTARTTIMESTAMP=V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP
+       GROUP BY S.SITENAME, SECTORID, S.NSITENAME,  NSECTORID
+      ),
+       V_HO_BY_RANK AS( SELECT T.*, ROW_NUMBER() OVER(PARTITION BY T.SITENAME, T.SECTORID ORDER BY T.SUM_OF_HO_ATTEMPT DESC NULLS LAST) AS ROW_ORDER FROM  V_HO_BY_SITES T),
+     V_ROLLBACK_KPIS AS
+     ( 
+     SELECT SITENAME,SECTORID, 
+            SUM(VOICE_TRAFFIC_REF)  AS SUM_VOICE_TRAFFIC_REF ,  
+            SUM(DATA_VOLUME_REF)    AS SUM_DATA_VOLUME_REF,
+            SUM(VOICE_TRAFFIC_CONS) AS SUM_VOICE_TRAFFIC_CONS ,  
+            SUM(DATA_VOLUME_CONS)   AS SUM_DATA_VOLUME_CONS
+      FROM LS_CCO_MT_CELL_ROLLBACK_KPIS T
+      WHERE T.EXECUTIONGUID=V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID
+        AND T.EXECUTIONSTARTTIMESTAMP=V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP
+      GROUP BY SITENAME,SECTORID
+     )
+        SELECT MAP.SITENAME,
+             MAP.SECTORID,
+            SUM(RB_KPIS.SUM_VOICE_TRAFFIC_REF),
+            SUM(RB_KPIS.SUM_DATA_VOLUME_REF),
+            SUM(RB_KPIS.SUM_VOICE_TRAFFIC_CONS),
+            SUM(RB_KPIS.SUM_DATA_VOLUME_CONS)
+        FROM V_HO_BY_RANK MAP 
+        JOIN V_ROLLBACK_KPIS RB_KPIS 
+         ON  (MAP.NSITENAME=RB_KPIS.SITENAME AND MAP.NSECTORID=RB_KPIS.SECTORID) --TODO:INFO NSITENAME=
+        WHERE ROW_ORDER < 5
+        GROUP BY MAP.SITENAME,  MAP.SECTORID;
+
+     /********************************************************************************************************/
+
+       MERGE INTO LS_CCO_MT_CELL_ROLLBACK_REPORT T
+        USING LS_CCO_MT_TEMP_CLUSTER_KPIS S
+        ON (    T.SITENAME=S.SITENAME AND T.SECTORID=S.SECTORID 
+            AND T.EXECUTIONGUID=V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID 
+            AND T.EXECUTIONSTARTTIMESTAMP=V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP
+           )
+       WHEN MATCHED THEN UPDATE SET 
+        T.CLUSTER_DATA_VOLUME_REF = S.SUM_DATA_VOLUME_REF,
+        T.CLUSTER_VOICE_TRAFF_REF = S.SUM_VOICE_TRAFFIC_REF,
+        T.CLUSTER_DATA_VOLUME_CONS = S.SUM_DATA_VOLUME_CONS,
+        T.CLUSTER_VOICE_TRAFF_CONS = S.SUM_VOICE_TRAFFIC_CONS
+       WHERE   T.EXECUTIONGUID=V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID 
+           AND T.EXECUTIONSTARTTIMESTAMP=V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP;
+
+       commit; 
+
+        /********************************************************************************************************/
+
+    MERGE INTO LS_CCO_MT_CELL_ROLLBACK_REPORT T 
+    USING ( 
+          SELECT CELLID,  RETID,    CASE
+                   WHEN     (AGG_NUMBER_OF_DROPS_DATA_CONS - AGG_NUMBER_OF_DROPS_DATA_CONS) > ROLLBACK_NUMBER_OF_PACKET_DROP
+                        AND ( (AGG_DROP_RATE_DATA_CONS - AGG_DROP_RATE_DATA_REF) / DECODE(AGG_DROP_RATE_DATA_CONS,0,1,AGG_DROP_RATE_DATA_CONS) ) > ROLLBACK_PACKET_DROP_RATE
+                   THEN 'PACKET DROP RATE INCREMENT'
+                   WHEN     (AGG_NUMBER_OF_DROPS_VOICE_CONS - AGG_NUMBER_OF_DROPS_VOICE_REF) > ROLLBACK_NUMBER_OF_VOICE_DROP
+                        AND ( (AGG_DROP_RATE_VOICE_CONS - AGG_DROP_RATE_VOICE_REF) / DECODE(AGG_DROP_RATE_VOICE_CONS,0,1,AGG_DROP_RATE_VOICE_CONS)) > ROLLBACK_VOICE_DROP_RATE
+                   THEN 'PACKET DROP RATE INCREMENT'
+                   WHEN     (AGG_IRAT_ATTEMPT_CONS - AGG_IRAT_ATTEMPT_REF) > ROLLBACK_IRAT_HO_ACTIVIT_CALL
+                        AND ( (AGG_IRAT_PER_CALL_CONS - AGG_IRAT_PER_CALL_REF) / DECODE(AGG_IRAT_PER_CALL_CONS,0,1,AGG_IRAT_PER_CALL_CONS)) > ROLLBACK_NUMBER_IRAT_HO_ACT
+                   THEN 'IRAT HANDOVER ACTIVITY INCREMENT'
+                   WHEN (AGG_CA_DATA_VOLUME_CONS - AGG_CA_DATA_VOLUME_REF) / DECODE(AGG_CA_DATA_VOLUME_CONS,0,1,AGG_CA_DATA_VOLUME_CONS) > ROLLBACK_CA_DATAVOLUME
+                   THEN  'CA DATA VOLUME DECREMENT'
+                   WHEN (CLUSTER_VOICE_TRAFF_CONS - CLUSTER_VOICE_TRAFF_REF) / DECODE(CLUSTER_VOICE_TRAFF_CONS,0,1,CLUSTER_VOICE_TRAFF_CONS) > ROLLBACK_CLUSTER_VOICE_TRAFFIC
+                   THEN  'Cluster Voice Traffic DECREMENT'
+                   WHEN (CLUSTER_DATA_VOLUME_CONS - CLUSTER_DATA_VOLUME_REF) / DECODE(CLUSTER_DATA_VOLUME_CONS,0,1,CLUSTER_DATA_VOLUME_CONS) > ROLLBACK_CLUSTER_DATA_VOLUME
+                   THEN 'Cluster Data Volume DECREMENT'
+                   WHEN AGG_MAX_CAPACITY_UTIL_CONS > ROLLBACK_MAX_CAPACITY_FAILURE
+                   THEN 'Resource Utilization INCREMENT'
+                   WHEN  AGG_TOTAL_FAIL_REF > ROLLBACK_RESOURCE_UTIL
+                   THEN  'Capacity Failures INCREMENT'
+               END AS ROLLBACK_REASON
+          FROM LS_CCO_MT_CELL_ROLLBACK_REPORT kpis
+               INNER JOIN LS_CCO_MT_GENERAL_SETTINGS LC4OS
+                   ON     kpis.EXECUTIONGUID = LC4OS.EXECUTIONGUID
+                      AND kpis.EXECUTIONSTARTTIMESTAMP = LC4OS.EXECUTIONSTARTTIMESTAMP
+                      AND kpis.PROFILEID = LC4OS.PROFILEID
+              WHERE LC4OS.EXECUTIONGUID = V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID 
+                AND LC4OS.EXECUTIONSTARTTIMESTAMP = V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP
+
+        ) MAP 
+      ON (      T.CELLID=MAP.CELLID AND   T.RETID=MAP.RETID
+            AND T.EXECUTIONGUID = V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID 
+            AND T.EXECUTIONSTARTTIMESTAMP =V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP 
+         )
+      WHEN MATCHED THEN UPDATE SET 
+      T.ROLLBACK_REASON = MAP.ROLLBACK_REASON;
+
+        COMMIT;
+
+       /********************************************************************************************************/
+
+      INSERT INTO LS_CCO_MT_SOLUTIONS (EXECUTIONGUID,EXECUTIONSTARTTIMESTAMP, OBJECT_TYPE,OBJECTID, MONAME, PARAMNAME,
+                                  CURRENT_TILT, NEW_TILT,ACTION,SKIP_REASON,RETMONAME_SPLITTED, DIRECTION
+                    )                                 
+
+    WITH V_MAP
+         AS (SELECT DISTINCT T.RET_SPLITTED, ROLLBACK_REASON 
+               FROM LS_CCO_MT_CELL_ROLLBACK_REPORT T 
+               WHERE T.ROLLBACK_REASON IS NOT NULL 
+                 AND T.EXECUTIONGUID = V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID
+                 AND T.EXECUTIONSTARTTIMESTAMP =V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP 
+            )
+    SELECT EXECUTIONGUID, EXECUTIONSTARTTIMESTAMP, 
+          'RET'            AS OBJECT_TYPE,
+           C.RETID         AS OBJECTID,
+           C.RETMONAME_SPLITTED AS MONAME,
+           'TILT'          AS PARAMNAME,
+           NULL            AS CURRENT_TILT, 
+           C.ORIGINALVALUE AS NEW_TILT, 
+           'modify'        AS ACTION,
+           ROLLBACK_REASON AS SKIP_REASON,
+           RETMONAME_SPLITTED AS RETMONAME_SPLITTED,
+           'FW' AS DIRECTION
+      FROM V_MAP 
+      JOIN LS_CCO_MT_ORIGINALVALUES C ON (V_MAP.RET_SPLITTED = C.RETMONAME_SPLITTED)
+      WHERE  C.EXECUTIONGUID = V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID
+         AND C.EXECUTIONSTARTTIMESTAMP =V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP 
+      ;  
+           COMMIT;  
+ /********************************************************************************************************/ 
+    DELETE FROM LS_CCO_MT_ORIGINALVALUES ST WHERE ST.EXECUTIONPLANID = V_ROW_LS_CCO_SETTINGS.EXECUTIONPLANID
+    AND ST.RETMONAME_SPLITTED IN ( SELECT   T.RET_SPLITTED 
+                                           FROM LS_CCO_MT_CELL_ROLLBACK_REPORT T 
+                                           WHERE T.ROLLBACK_REASON IS NOT NULL 
+                                             AND T.EXECUTIONGUID = V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID
+                                             AND T.EXECUTIONSTARTTIMESTAMP =V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP  
+                            );
+        COMMIT; 
+
+ END; 
+
+ PROCEDURE FILL_SOLUTIONS
+ IS 
+ BEGIN
+
+ INSERT INTO LS_CCO_MT_SOLUTIONS (EXECUTIONGUID,EXECUTIONSTARTTIMESTAMP,PROFILENAME, CATEGORY_1_ACTION,CATEGORY_2_ACTION,CATEGORY_3_ACTION,CATEGORY_4_ACTION,FINAL_ACTION,
+                                 OBJECT_TYPE,OBJECTID, MONAME, PARAMNAME,
+                                  CURRENT_TILT, NEW_TILT,MIN_TILT,MAX_TILT,DELTA_TILT,ACTION,SKIP_REASON,RETMONAME_SPLITTED, DIRECTION,OSSCOMMAND
+                    )
+     SELECT EXECUTIONGUID,EXECUTIONSTARTTIMESTAMP,PROFILENAME,
+     CATEGORY_1_ACTION,CATEGORY_2_ACTION,CATEGORY_3_ACTION,CATEGORY_4_ACTION,FINAL_ACTION,
+     'RET' AS OBJECT_TYPE,
+     RETID OBJECTID,
+     RETMONAME_SPLITTED AS MONAME,
+     PARAMNAME,
+     CURRENT_TILT, NEW_TILT,MIN_TILT,MAX_TILT,DELTA_TILT,
+     ACTION,SKIP_REASON, RETMONAME_SPLITTED,'FW' AS DIRECTION,
+     CASE PARAMNAME  
+                        WHEN 'TILT' THEN  
+                         'modret('  || AR.RETID  || ',"' || AR.RETMONAME_SPLITTED || '",' || ar.PARAMNAME || '=' || TO_CHAR(ar.NEW_TILT) ||') // ' || 'FW' ||':'||ar.SKIP_REASON
+                        WHEN 'CPICHPOWER'  THEN
+                         'modcell(' ||  ar.RETID || ',' || ar.PARAMNAME || '=' || TO_CHAR(ar.NEW_TILT) ||') // ' || 'FW' ||':'||ar.SKIP_REASON 
+                      END  AS OSSSCRIPTCOMMANDS 
+    FROM LS_CCO_MT_TILT_ACTION_REPORT AR
+     WHERE AR.EXECUTIONGUID=V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID  AND AR.EXECUTIONSTARTTIMESTAMP=V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP 
+
+     ;
+  /* UNION ALL
+    SELECT EXECUTIONGUID,EXECUTIONSTARTTIMESTAMP,PROFILENAME,
+    CATEGORY_1_ACTION,CATEGORY_2_ACTION,CATEGORY_3_ACTION,CATEGORY_4_ACTION,FINAL_ACTION,
+     'CELL' AS OBJECT_TYPE,
+    CELLID,CELL,
+    PARAMNAME,
+    CURRENT_POWER,NEW_POWER,MIN_POWER,MAX_POWER,DELTA_POWER,
+    ACTION,SKIP_REASON,RETMONAME_SPLITTED,'FW' AS DIRECTION
+    FROM LS_CCO_MT_POWER_ACTION_REPORT AR
+     WHERE AR.EXECUTIONGUID=V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID  AND AR.EXECUTIONSTARTTIMESTAMP=V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP ;
+    */ 
+     COMMIT;
+
+ END;
+
+ PROCEDURE FILL_ORIGINAL_VALUES 
+ IS  
+ BEGIN
+
+ --Fill Original Values
+    IF V_ROW_LS_CCO_SETTINGS.OPERATION_TYPE = 1 THEN  
+
+        INSERT INTO   LS_CCO_MT_ORIGINALVALUES ( EXECUTIONGUID,EXECUTIONSTARTTIMESTAMP, EXECUTIONPLANID, OPTIMIZERID,PARAMNAME, ORIGINALVALUE, PROFILEID,RETID, RETMONAME_SPLITTED)
+        SELECT /*+ FULL(AR)*/ EXECUTIONGUID, EXECUTIONSTARTTIMESTAMP, V_ROW_LS_CCO_SETTINGS.EXECUTIONPLANID,121000, NULL,NEW_TILT,PROFILEID,RETID, RETMONAME_SPLITTED
+        FROM LS_CCO_MT_RET_ACTION_REPORT AR
+        WHERE AR.EXECUTIONGUID=V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID
+          AND AR.EXECUTIONSTARTTIMESTAMP=V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP 
+          AND NOT EXISTS (SELECT 1 FROM LS_CCO_MT_RET_ACTION_REPORT OV WHERE OV.MO=AR.MO /*AND OV.PARAMNAME=AR.PARAMNAME*/)
+          AND AR.DIRECTION='FW'
+          AND AR.ACTION<>'SKIP';
+
+        LITESON_HELPERS.FILL_LOG_TABLE(V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID, V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP, null,'Finished to fill original values', SQL%ROWCOUNT);
+
+        END IF; 
+
+ END;
+
+  PROCEDURE INIT (EXECUTIONGUID             IN     RAW,
+                    EXECUTIONSTARTTIMESTAMP   IN     TIMESTAMP,
+                    EXECNO                    IN     NUMBER,
+                    FIRSTEXECUTION            IN     NUMBER,
+                    LASTEXECUTION             IN     NUMBER,
+                    EXECUTIONPROFILE          IN     XMLTYPE,
+                    GENERICMETADATA           IN     XMLTYPE,
+                    KPICMMAPPINGS             IN     XMLTYPE,
+                    MACHINEOS                 IN     VARCHAR2,
+                    AUTHINFO                  IN     VARCHAR2,
+                    OPERATIONTYPE             IN     NUMBER,
+                    EXECUTIONTIME             IN     TIMESTAMP,
+                    RESULTCODE                   OUT NUMBER,
+                    OBSERVATIONPERIODS        IN     XMLTYPE,
+                    EXECUTIONPARAMS           IN     XMLTYPE)
+   IS
+
+    v_code                        NUMBER;
+    v_errm                        VARCHAR2 (4000 BYTE);
+    v_jobname            CONSTANT VARCHAR2 (100 BYTE) := LITESON_HELPERS.GET_EXECUTIONPLAN_PARAM (INIT.EXECUTIONPROFILE, 'Name');
+    v_jobdesc            CONSTANT VARCHAR2 (100 BYTE) := LITESON_HELPERS.GET_EXECUTIONPLAN_PARAM (INIT.EXECUTIONPROFILE,  'Description');  
+    v_EXTRAINFO          VARCHAR2 (500);
+    v_Action_Count                NUMBER; 
+    V_OPTIMIZER_NAME     CONSTANT PISON_OPTIMIZER.OPTIMIZERNAME%TYPE := 'CCO_MT';
+   BEGIN
+        v_EXTRAINFO := 'ModuleName=' ||  V_OPTIMIZER_NAME;
+        LITESON_HELPERS.UPDATE_STATE_TABLE (INIT.EXECUTIONGUID,  INIT.EXECUTIONSTARTTIMESTAMP, 'Optimizer has been started');
+
+        LITESON_HELPERS.FILL_LOG_LITESON_INPUT(
+                                              INIT.EXECUTIONGUID,INIT.EXECUTIONSTARTTIMESTAMP,INIT.EXECNO,INIT.FIRSTEXECUTION,INIT.LASTEXECUTION,
+                                              INIT.EXECUTIONPROFILE,GENERICMETADATA,MACHINEOS,AUTHINFO,121000,-1,INIT.OPERATIONTYPE,
+                                              INIT.EXECUTIONPARAMS,INIT.OBSERVATIONPERIODS
+                                              ); 
+
+      V_ROW_LS_CCO_SETTINGS.EXECUTIONSTARTTIMESTAMP:=INIT.EXECUTIONSTARTTIMESTAMP;
+      V_ROW_LS_CCO_SETTINGS.EXECUTIONGUID     :=INIT.EXECUTIONGUID;
+      V_ROW_LS_CCO_SETTINGS.EXECUTIONPLANID   :=ABS(LITESON_HELPERS.GET_EXECUTIONPLAN_PARAM (INIT.EXECUTIONPROFILE, 'Id'));
+      V_ROW_LS_CCO_SETTINGS.OPTIMIZER_NAME    :=V_OPTIMIZER_NAME;
+      V_ROW_LS_CCO_SETTINGS.IS_FORCE_ROLLBACK :=CAST(LITESON_HELPERS.GET_EXECUTIONPARAMS(INIT.EXECUTIONPARAMS,'ForceRollback') AS NUMBER) ;
+      V_ROW_LS_CCO_SETTINGS.IS_PERIOD_ROLLBACK:=CAST(LITESON_HELPERS.GET_EXECUTIONPARAMS(INIT.EXECUTIONPARAMS,'CurrentScheduleIndex') AS NUMBER);
+      V_ROW_LS_CCO_SETTINGS.EXECUTIONPROFILE  :=INIT.EXECUTIONPROFILE;
+      V_ROW_LS_CCO_SETTINGS.EXECUTIONPARAMS   :=INIT.EXECUTIONPARAMS;
+      V_ROW_LS_CCO_SETTINGS.OBSERVATIONPERIODS:=INIT.OBSERVATIONPERIODS;
+      V_ROW_LS_CCO_SETTINGS.OPERATION_TYPE    :=INIT.OPERATIONTYPE;
+      V_ROW_LS_CCO_SETTINGS.SESSION_ID        :=SYS_CONTEXT('USERENV', 'SID');
+  /*
+    FILL_SETTINGS_TABLE; 
+    FILL_TEMP_RELATION_TABLE;
+    FILL_CELL_ALL_KPIS;
+    FILL_CELL_ALL_ACTIONS;
+    CALCULATE_TA_VALUES;  
+    FILL_RELATIONS;
+    UPDATE_RELATION_BASED_KPIS;        
+
+    */
+ /*
+    FILL_GAP_OVERSHOOT_REPORT;
+    UNDERSHOOT_CELL_PRE_ACTION;
+
+    OVERSHOOT_CELL_PRE_ACTION;
+    FIND_CELL_REPORT_GAP_OS;
+    FILL_RET_ACTION_REPORT;
+    FILL_POWER_ACTION_REPORT;
+    FILL_TILT_ACTION_REPORT;
+   */ FILL_ROLLBACK_OPERATIONS;
+    FILL_SOLUTIONS;
+
+    LITESON_HELPERS.UPDATE_STATE_TABLE (INIT.EXECUTIONGUID, INIT.EXECUTIONSTARTTIMESTAMP, 'Optimizer has been finished'); 
+
+   END;
+
+END LS_CCO_MT;
